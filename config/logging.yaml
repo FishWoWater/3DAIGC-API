@@ -1,0 +1,102 @@
+# Logging Configuration for 3D Generative Models API
+# This configuration uses Python's dictConfig format
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  default:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  detailed:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(funcName)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  simple:
+    format: "%(levelname)s - %(name)s - %(message)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: default
+    stream: ext://sys.stdout
+  
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: detailed
+    filename: logs/app.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    mode: a
+    encoding: utf8
+  
+  api_file:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: default
+    filename: logs/api.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 3
+    mode: a
+    encoding: utf8
+  
+  error_file:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: detailed
+    filename: logs/error.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    mode: a
+    encoding: utf8
+  
+  scheduler_file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: detailed
+    filename: logs/scheduler.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 3
+    mode: a
+    encoding: utf8
+
+loggers:
+  "":  # Root logger
+    level: INFO
+    handlers: [console, file, error_file]
+    propagate: false
+  
+  api:
+    level: INFO
+    handlers: [console, api_file, error_file]
+    propagate: false
+  
+  core.scheduler:
+    level: DEBUG
+    handlers: [console, scheduler_file, error_file]
+    propagate: false
+  
+  adapters:
+    level: INFO
+    handlers: [console, file, error_file]
+    propagate: false
+  
+  uvicorn:
+    level: INFO
+    handlers: [console, api_file]
+    propagate: false
+  
+  uvicorn.access:
+    level: INFO
+    handlers: [api_file]
+    propagate: false
+  
+  uvicorn.error:
+    level: INFO
+    handlers: [console, error_file]
+    propagate: false
+
+root:
+  level: INFO
+  handlers: [console, file, error_file]

@@ -1,0 +1,44 @@
+# Core FastAPI and web server dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# HTTP and middleware
+httpx==0.25.2
+python-multipart==0.0.6
+
+# Configuration and data handling
+PyYAML==6.0.1
+python-dotenv==1.0.0
+
+# File handling and async I/O
+aiofiles==23.2.1
+Pillow==10.1.0
+
+# GPU monitoring and system info
+GPUtil==1.4.0
+psutil==5.9.6
+
+# 3D processing libraries
+trimesh==4.6.12
+open3d==0.18.0
+numpy==1.24.3
+
+# Development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+
+# Logging and monitoring
+structlog==23.2.0
+
+# Security
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+
+# Optional: For production deployment
+gunicorn==21.2.0
+redis==5.0.1  # For caching and job queues

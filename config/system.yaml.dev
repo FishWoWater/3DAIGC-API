@@ -1,0 +1,51 @@
+# System Configuration
+# Default configuration for development
+
+# Server configuration
+server:
+  host: "0.0.0.0"
+  port: 7842
+  workers: 1
+  max_request_size: "100MB"
+  timeout: 300
+
+# GPU configuration
+gpu:
+  auto_detect: true
+  memory_buffer: 1024  # MB to keep free
+  max_utilization: 1.0   # don't put any limitations
+
+# Scheduler configuration
+scheduler:
+  queue_size: 1000
+  job_timeout: 1800  # 30 minutes
+  cleanup_interval: 300  # 5 minutes
+  priority_weights:
+    mesh_generation: 1.0
+    texture_generation: 0.8
+    segmentation: 0.6
+    auto_rigging: 0.4
+
+# Storage configuration
+storage:
+  input_dir: "/tmp/inputs"
+  output_dir: "/tmp/outputs"
+  cleanup_after: 3600  # 1 hour
+  max_file_size: "500MB"
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null  # Set to file path to enable file logging
+
+# Security configuration
+security:
+  api_key_required: false  # disable api key for development (TBD)
+  rate_limit_per_minute: 60
+  cors_origins: ["*"]
+  jwt_secret: null  # Set for JWT authentication
+
+# Environment settings
+environment: "development"
+debug: true

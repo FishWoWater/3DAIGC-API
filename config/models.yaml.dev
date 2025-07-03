@@ -1,0 +1,131 @@
+# Models Configuration
+# Available models for each feature
+# Use the actual adapter model IDs as defined in the adapter classes
+
+# text-conditioned geometry/geometry+texture generation
+text_to_textured_mesh:
+  trellis_text_to_textured_mesh:
+    vram_requirement: 12288  # MB
+    supported_inputs: ["text"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/TRELLIS"
+    enabled: true
+    max_workers: 1
+
+# text-conditioned mesh painting
+text_mesh_painting:
+  trellis_text_mesh_painting:
+    vram_requirement: 12288  # MB
+    supported_inputs: ["mesh", "text"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/TRELLIS"
+    enabled: false
+    max_workers: 1
+
+# image-conditioned geometry generation
+image_to_raw_mesh:
+  hunyuan3d_2_0_image_to_raw_mesh:
+    vram_requirement: 5120  # MB
+    supported_inputs: ["image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/Hunyuan3D-2"
+    enabled: false
+    max_workers: 1
+    
+  hunyuan3d_image_to_raw_mesh:
+    vram_requirement: 8192  # MB
+    supported_inputs: ["image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/Hunyuan3D-2.1"
+    enabled: false
+    max_workers: 1
+    
+  partpacker_part_packing:
+    vram_requirement: 10240  # MB
+    supported_inputs: ["image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/PartPacker"
+    enabled: false
+    max_workers: 1
+
+# image-conditioned geometry+texture generation
+image_to_textured_mesh:
+  trellis_image_to_textured_mesh:
+    vram_requirement: 12288  # MB
+    supported_inputs: ["image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/TRELLIS"
+    enabled: false
+    max_workers: 1
+
+  hunyuan3d_2_0_image_to_textured_mesh:
+    vram_requirement: 14336  # MB
+    supported_inputs: ["image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/Hunyuan3D-2"
+    enabled: false
+    max_workers: 1
+
+  hunyuan3d_image_to_textured_mesh:
+    vram_requirement: 19456  # MB
+    supported_inputs: ["image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/Hunyuan3D-2.1"
+    enabled: false
+    max_workers: 1
+
+# image-conditioned mesh painting
+image_mesh_painting:
+  trellis_image_mesh_painting:
+    vram_requirement: 12288  # MB
+    supported_inputs: ["mesh", "image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/TRELLIS"
+    enabled: false
+    max_workers: 1
+
+  hunyuan3d_2_0_image_mesh_painting:
+    vram_requirement: 11264  # MB
+    supported_inputs: ["mesh", "text", "image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/Hunyuan3D-2"
+    enabled: false
+    max_workers: 1
+
+  hunyuan3d_image_mesh_painting:
+    vram_requirement: 12288  # MB
+    supported_inputs: ["mesh", "text", "image"]
+    supported_outputs: ["glb", "obj"]
+    model_path: "thirdparty/Hunyuan3D-2"
+    enabled: false
+    max_workers: 1
+
+# mesh segmentation
+mesh_segmentation:
+  partfield_mesh_segmentation:
+    vram_requirement: 4096  # MB
+    supported_inputs: ["glb", "obj"]
+    supported_outputs: ["glb"]
+    model_path: "thirdparty/PartField"
+    enabled: true
+    max_workers: 1
+
+# auto-rigging
+auto_rig:
+  unirig_auto_rig:
+    vram_requirement: 9216  # MB
+    supported_inputs: ["obj", "glb", "fbx"]
+    supported_outputs: ["obj", "glb", "fbx"]
+    model_path: "thirdparty/UniRig"
+    enabled: false
+    max_workers: 1
+
+# part_completion
+part_completion:
+  holopart_part_completion:
+    vram_requirement: 10240  # MB
+    supported_inputs: ["glb", "obj"]
+    supported_outputs: ["glb"]
+    model_path: "thirdparty/HoloPart"
+    enabled: false
+    max_workers: 1

@@ -1,0 +1,21 @@
+[submodule "thirdparty/HoloPart"]
+	path = thirdparty/HoloPart
+	url = https://github.com/VAST-AI-Research/HoloPart
+[submodule "thirdparty/TRELLIS"]
+	path = thirdparty/TRELLIS
+	url = https://github.com/FishWoWater/TRELLIS
+[submodule "thirdparty/PartField"]
+	path = thirdparty/PartField
+	url = https://github.com/nv-tlabs/PartField
+[submodule "thirdparty/PartPacker"]
+	path = thirdparty/PartPacker
+	url = https://github.com/NVlabs/PartPacker
+[submodule "thirdparty/Hunyuan3D-2"]
+	path = thirdparty/Hunyuan3D-2
+	url = https://github.com/Tencent-Hunyuan/Hunyuan3D-2
+[submodule "thirdparty/Hunyuan3D-2.1"]
+	path = thirdparty/Hunyuan3D-2.1
+	url = https://github.com/FishWoWater/Hunyuan3D-2.1
+[submodule "thirdparty/UniRig"]
+	path = thirdparty/UniRig
+	url = https://github.com/FishWoWater/UniRig
