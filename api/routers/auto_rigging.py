@@ -5,17 +5,19 @@ Provides endpoints for automatically adding bone structures to 3D meshes.
 """
 
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.dependencies import get_scheduler
+from api.routers.file_upload import resolve_file_id
 from core.scheduler.job_queue import JobRequest
 from core.scheduler.multiprocess_scheduler import MultiprocessModelScheduler
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/auto-rig", tags=["auto_rig"])
+router = APIRouter(prefix="/auto-rigging", tags=["auto_rigging"])
 
 
 def validate_model_preference(
@@ -53,12 +55,28 @@ def validate_model_preference(
 class AutoRigRequest(BaseModel):
     """Request for auto-rigging"""
 
-    mesh_path: str = Field(..., description="Path to the input mesh file")
+    mesh_path: Optional[str] = Field(None, description="Path to the input mesh file")
+    mesh_file_id: Optional[str] = Field(
+        None, description="File ID from upload endpoint"
+    )
     rig_mode: str = Field("skeleton", description="Rig mode for auto-rigging")
     output_format: str = Field("fbx", description="Output format for rigged mesh")
     model_preference: str = Field(
         "unirig_auto_rig", description="Name of the auto-rigging model to use"
     )
+
+    @field_validator("mesh_file_id")
+    @classmethod
+    def validate_inputs(cls, v, info):
+        mesh_path = info.data.get("mesh_path")
+
+        inputs_provided = sum(bool(x) for x in [mesh_path, v])
+
+        if inputs_provided == 0:
+            raise ValueError("One of mesh_path or mesh_file_id must be provided")
+        if inputs_provided > 1:
+            raise ValueError("Only one of mesh_path or mesh_file_id should be provided")
+        return v
 
     model_config = ConfigDict(protected_namespaces=("settings_",))
 
@@ -97,12 +115,31 @@ async def generate_rig(
         # Validate model preference
         validate_model_preference(request.model_preference, "auto_rig", scheduler)
 
+        # Process mesh input
+        mesh_file_path = None
+
+        if request.mesh_file_id:
+            # Handle file ID
+            mesh_file_path = resolve_file_id(request.mesh_file_id)
+            if not mesh_file_path:
+                raise HTTPException(
+                    status_code=404, detail="Mesh file not found or expired"
+                )
+        else:
+            mesh_file_path = request.mesh_path
+
+        # Validate mesh file exists
+        if not mesh_file_path:
+            raise HTTPException(
+                status_code=400, detail="Mesh path or file ID must be provided"
+            )
+
         # Validate rig type
         job_request = JobRequest(
             feature="auto_rig",
             inputs={
                 "rig_mode": request.rig_mode.lower(),
-                "mesh_path": request.mesh_path,
+                "mesh_path": mesh_file_path,
                 "output_format": request.output_format,
             },
             model_preference=request.model_preference,
@@ -123,48 +160,6 @@ async def generate_rig(
     except Exception as e:
         logger.error(f"Error scheduling auto-rig job: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to schedule job: {str(e)}")
-
-
-@router.post("/upload-mesh")
-async def upload_mesh_for_rigging(
-    file: UploadFile = File(..., description="Mesh file (OBJ, GLB, FBX)"),
-):
-    """
-    Upload a mesh file for auto-rigging.
-
-    Args:
-        file: Uploaded mesh file
-
-    Returns:
-        File path information
-    """
-    try:
-        # Validate file format
-        allowed_formats = {".obj", ".glb", ".fbx"}
-        if file.filename is None:
-            raise HTTPException(status_code=400, detail="File name is required")
-        file_extension = "." + file.filename.split(".")[-1].lower()
-
-        if file_extension not in allowed_formats:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file format. Allowed: {allowed_formats}",
-            )
-
-        # In a real implementation, save the file to storage
-        # For now, return a mock path
-        file_path = f"/uploads/meshes/{file.filename}"
-
-        return {
-            "filename": file.filename,
-            "file_path": file_path,
-            "size": file.size,
-            "content_type": file.content_type,
-        }
-
-    except Exception as e:
-        logger.error(f"Error uploading mesh file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
 
 @router.get("/supported-formats")

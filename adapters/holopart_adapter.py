@@ -5,6 +5,7 @@ This adapter integrates HoloPart for 3D part completion and generation.
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -276,6 +277,16 @@ class HoloPartCompletionAdapter(BaseMeshGenerationModel):
             "part_stats": part_stats,
             "scene_bounds": scene.bounds.tolist() if hasattr(scene, "bounds") else None,
         }
+
+    def _generate_thumbnail_path(self, mesh_path: Path) -> Path:
+        """Generate thumbnail file path based on mesh path."""
+        # Create thumbnails directory
+        thumbnail_dir = Path(os.getcwd()) / "outputs" / "thumbnails"
+        thumbnail_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate thumbnail filename
+        thumbnail_name = mesh_path.stem + "_thumb.png"
+        return thumbnail_dir / thumbnail_name
 
     def get_supported_formats(self) -> Dict[str, List[str]]:
         """Return supported input/output formats for HoloPart."""

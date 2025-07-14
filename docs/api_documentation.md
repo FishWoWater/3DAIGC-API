@@ -2,18 +2,22 @@
 
 ## Overview
 
-This API provides scalable 3D AI model inference capabilities with VRAM-aware scheduling. The backend supports multiple 3D generation features including mesh generation, texturing, segmentation, and auto-rigging.
+This API provides scalable 3D AI model inference capabilities with VRAM-aware scheduling. The backend supports multiple 3D AIGC features including mesh generation, texturing, segmentation, and auto-rigging.
 
-**Base URL**: `http://localhost:8000` (or your configured host/port)
+**Base URL**: `http://localhost:7842` (or your configured host/port)
 **API Version**: v1
 **Documentation**: `/docs` (Swagger UI) or `/redoc` (ReDoc)
 
-## Authentication
+## File Upload System
 
-Some endpoints require API key authentication. Include the API key in the request headers:
-```
-Authorization: Bearer YOUR_API_KEY
-```
+The API supports file uploads for images and meshes, returning unique file IDs that can be used in subsequent API calls. Files are automatically cleaned up after 24 hours.
+
+### File Upload Workflow
+
+1. **Upload Files**: Upload your images and meshes to get unique file IDs
+2. **Use File IDs**: Use the returned file IDs in mesh generation, segmentation, or rigging requests
+3. **Process Results**: Download generated results using the job system
+
 
 ## Response Format
 
@@ -37,11 +41,6 @@ All API responses follow a consistent format:
 }
 ```
 
-## Rate Limits
-
-- File uploads: 50MB for images, 200MB for meshes
-- Concurrent jobs: Managed by VRAM-aware scheduler
-- Texture resolution: 256-4096 pixels
 
 ---
 
@@ -61,33 +60,6 @@ All API responses follow a consistent format:
 }
 ```
 
-### System Information
-- **URL**: `/api/v1/system/info`
-- **Method**: `GET`
-- **Description**: Get detailed system information
-- **Authentication**: Required
-- **Response**:
-```json
-{
-  "system": {
-    "platform": "Linux-5.4.0",
-    "python_version": "3.10.0",
-    "cpu_count": 8,
-    "memory_total": 34359738368,
-    "memory_available": 16777216000
-  },
-  "application": {
-    "version": "1.0.0",
-    "environment": "development",
-    "debug": true
-  },
-  "configuration": {
-    "server": {"host": "0.0.0.0", "port": 8000, "workers": 4},
-    "gpu": {"auto_detect": true, "memory_buffer": 1024},
-    "storage": {"input_dir": "inputs", "output_dir": "outputs"}
-  }
-}
-```
 
 ### System Status
 - **URL**: `/api/v1/system/status`
@@ -130,26 +102,6 @@ All API responses follow a consistent format:
 }
 ```
 
-### List Available Models
-- **URL**: `/api/v1/system/models`
-- **Method**: `GET`
-- **Description**: List available models, optionally filtered by feature
-- **Authentication**: Required
-- **Query Parameters**:
-  - `feature` (optional): Filter by specific feature type
-- **Response**:
-```json
-{
-  "available_models": {
-    "text_to_raw_mesh": ["trellis_text_to_raw_mesh"],
-    "image_to_raw_mesh": ["trellis_image_to_raw_mesh"],
-    "mesh_segmentation": ["partfield_mesh_segmentation"],
-    "auto_rig": ["unirig_auto_rig"]
-  },
-  "total_features": 4,
-  "total_models": 4
-}
-```
 
 ### List Supported Features
 - **URL**: `/api/v1/system/features`
@@ -175,10 +127,31 @@ All API responses follow a consistent format:
 }
 ```
 
+### List Available Models
+- **URL**: `/api/v1/system/models`
+- **Method**: `GET`
+- **Description**: List available models, optionally filtered by feature
+- **Authentication**: Required
+- **Query Parameters**:
+  - `feature` (optional): Filter by specific feature type
+- **Response**:
+```json
+{
+  "available_models": {
+    "text_to_raw_mesh": ["trellis_text_to_raw_mesh"],
+    "image_to_raw_mesh": ["trellis_image_to_raw_mesh"],
+    "mesh_segmentation": ["partfield_mesh_segmentation"],
+    "auto_rig": ["unirig_auto_rig"]
+  },
+  "total_features": 4,
+  "total_models": 4
+}
+```
+
 ### Get Job Status
 - **URL**: `/api/v1/system/jobs/{job_id}`
 - **Method**: `GET`
-- **Description**: Get status of a specific job
+- **Description**: Get status of a specific job with visitable URLs for files
 - **Authentication**: None required
 - **Path Parameters**:
   - `job_id`: Unique job identifier
@@ -191,12 +164,86 @@ All API responses follow a consistent format:
   "completed_at": "2024-01-01T00:05:00.000Z",
   "processing_time": 300.5,
   "result": {
-    "output_mesh_path": "/outputs/mesh_123456.glb",
+    "output_mesh_path": "/outputs/meshes/mesh_123456.glb",
+    "thumbnail_path": "/outputs/thumbnails/mesh_123456_thumb.png",
+    "mesh_url": "http://localhost:7842/api/v1/system/jobs/job_123456/download",
+    "thumbnail_url": "http://localhost:7842/api/v1/system/jobs/job_123456/thumbnail",
+    "mesh_file_info": {
+      "filename": "mesh_123456.glb",
+      "file_size_bytes": 2621440,
+      "file_size_mb": 2.5,
+      "content_type": "model/gltf-binary",
+      "file_extension": ".glb"
+    },
+    "thumbnail_file_info": {
+      "filename": "mesh_123456_thumb.png",
+      "file_size_bytes": 51200,
+      "file_size_mb": 0.05,
+      "content_type": "image/png",
+      "file_extension": ".png"
+    },
     "generation_info": {
       "model_used": "trellis_text_to_raw_mesh",
-      "parameters": {"text_prompt": "A red car"}
+      "parameters": {"text_prompt": "A red car"},
+      "thumbnail_generated": true
     }
   }
+}
+```
+
+### Download Job Thumbnail
+- **URL**: `/api/v1/system/jobs/{job_id}/thumbnail`
+- **Method**: `GET`
+- **Description**: Download the thumbnail image of a completed job
+- **Authentication**: None required
+- **Path Parameters**:
+  - `job_id`: Unique job identifier
+- **Query Parameters**:
+  - `format` (optional): `file` (default) or `base64`
+  - `filename` (optional): Custom filename for download
+- **Response**: Binary image file download or base64 encoded data
+
+### Get Jobs History
+- **URL**: `/api/v1/system/jobs/history`
+- **Method**: `GET`
+- **Description**: Get historical jobs with filtering and pagination support
+- **Authentication**: None required
+- **Query Parameters**:
+  - `limit` (optional): Maximum number of jobs to return (1-500, default: 100)
+  - `offset` (optional): Number of jobs to skip for pagination (default: 0)
+  - `status` (optional): Filter by job status (`queued`, `processing`, `completed`, `failed`)
+  - `feature` (optional): Filter by feature type (e.g., `text_to_textured_mesh`)
+  - `start_date` (optional): Filter jobs after this date (ISO format: `2024-01-01T00:00:00Z`)
+  - `end_date` (optional): Filter jobs before this date (ISO format: `2024-01-01T23:59:59Z`)
+- **Response**:
+```json
+{
+  "jobs": [
+    {
+      "job_id": "job_123456",
+      "status": "completed",
+      "feature": "text_to_textured_mesh",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "completed_at": "2024-01-01T00:05:00.000Z",
+      "model_preference": "trellis_text_to_textured_mesh",
+      "processing_time": 300.5,
+      "output_mesh_path": "/outputs/mesh_123456.glb",
+      "thumbnail_path": "/outputs/thumbnails/mesh_123456_thumb.png"
+    }
+  ],
+  "pagination": {
+    "limit": 100,
+    "offset": 0,
+    "total": 1250,
+    "has_more": true
+  },
+  "filters": {
+    "status": null,
+    "feature": null,
+    "start_date": null,
+    "end_date": null
+  },
+  "timestamp": 1704067200.0
 }
 ```
 
@@ -321,67 +368,70 @@ All API responses follow a consistent format:
 }
 ```
 
-### Get Generation Presets
-- **URL**: `/api/v1/system/generation-presets`
-- **Method**: `GET`
-- **Description**: Get available generation presets and their parameters
+## File Upload Endpoints
+
+### Upload Image
+- **URL**: `/api/v1/file-upload/image`
+- **Method**: `POST`
+- **Description**: Upload an image file and get a unique file ID
 - **Authentication**: None required
+- **Content-Type**: `multipart/form-data`
+- **Request Body**:
+  - `file`: Image file (PNG, JPG, JPEG, WebP, BMP, TIFF)
 - **Response**:
 ```json
 {
-  "quality_presets": {
-    "low": {
-      "description": "Fast generation with basic quality",
-      "texture_resolution": 512,
-      "vertex_limit": 5000
-    },
-    "medium": {
-      "description": "Balanced generation quality and speed",
-      "texture_resolution": 1024,
-      "vertex_limit": 10000
-    },
-    "high": {
-      "description": "High quality generation (slower)",
-      "texture_resolution": 2048,
-      "vertex_limit": 20000
-    }
-  },
-  "style_presets": {
-    "realistic": "Photorealistic style with detailed textures",
-    "cartoon": "Stylized cartoon appearance",
-    "lowpoly": "Low polygon count geometric style",
-    "artistic": "Artistic interpretation with creative liberty"
-  }
+  "file_id": "abc123def456",
+  "filename": "example.jpg",
+  "file_type": "image",
+  "file_size_mb": 2.5,
+  "upload_time": "2024-01-01T12:00:00Z",
+  "expires_at": "2024-01-02T12:00:00Z"
 }
 ```
 
-### List Available Adapters
-- **URL**: `/api/v1/system/available-adapters`
-- **Method**: `GET`
-- **Description**: List all available adapters from the adapter registry
+### Upload Mesh
+- **URL**: `/api/v1/file-upload/mesh`
+- **Method**: `POST`
+- **Description**: Upload a mesh file and get a unique file ID
 - **Authentication**: None required
+- **Content-Type**: `multipart/form-data`
+- **Request Body**:
+  - `file`: Mesh file (GLB, OBJ, FBX, PLY, STL, GLTF)
 - **Response**:
 ```json
 {
-  "features": {
-    "text_to_raw_mesh": [
-      {
-        "model_id": "trellis_text_to_raw_mesh",
-        "status": "loaded",
-        "vram_requirement": 4096,
-        "supported_formats": {
-          "input": ["text"],
-          "output": ["glb", "obj", "fbx", "ply"]
-        }
-      }
-    ]
-  },
-  "total_adapters": 4,
-  "total_features": 4
+  "file_id": "xyz789abc123",
+  "filename": "model.glb",
+  "file_type": "mesh",
+  "file_size_mb": 15.2,
+  "upload_time": "2024-01-01T12:00:00Z",
+  "expires_at": "2024-01-02T12:00:00Z"
 }
 ```
 
----
+### Get File Metadata
+- **URL**: `/api/v1/file-upload/metadata/{file_id}`
+- **Method**: `GET`
+- **Description**: Get metadata for an uploaded file
+- **Authentication**: None required
+- **Path Parameters**:
+  - `file_id`: Unique file identifier
+- **Response**:
+```json
+{
+  "file_id": "abc123def456",
+  "filename": "example.jpg",
+  "file_type": "image",
+  "file_size_mb": 2.5,
+  "upload_time": "2024-01-01T12:00:00Z",
+  "expires_at": "2024-01-02T12:00:00Z",
+  "is_available": true
+}
+```
+
+
+
 
 ## Mesh Generation Endpoints
 
@@ -430,6 +480,21 @@ All API responses follow a consistent format:
   "message": "Text-to-textured-mesh generation job queued successfully"
 }
 ```
+- **Completed Job Result**: When job is complete, includes:
+```json
+{
+  "output_mesh_path": "/outputs/meshes/mesh_123456.glb",
+  "thumbnail_path": "/outputs/thumbnails/mesh_123456_thumb.png",
+  "generation_info": {
+    "model": "TRELLIS",
+    "text_prompt": "A red sports car",
+    "texture_prompt": "shiny metallic paint",
+    "vertex_count": 15420,
+    "face_count": 30840,
+    "thumbnail_generated": true
+  }
+}
+```
 
 ### Text Mesh Painting
 - **URL**: `/api/v1/mesh-generation/text-mesh-painting`
@@ -442,12 +507,16 @@ All API responses follow a consistent format:
   "text_prompt": "rusty metal texture",
   "mesh_path": "/path/to/mesh.glb",
   "mesh_base64": null,
+  "mesh_file_id": null,
   "texture_resolution": 1024,
   "output_format": "glb",
   "model_preference": "trellis_text_to_textured_mesh"
 }
 ```
-- **Note**: Provide either `mesh_path` or `mesh_base64`, not both
+- **File Input Options**: Provide **one** of the following:
+  - `mesh_path`: Local file path (for server-side files)
+  - `mesh_base64`: Base64 encoded mesh data
+  - `mesh_file_id`: File ID from upload endpoint (**recommended**)
 - **Response**:
 ```json
 {
@@ -467,11 +536,15 @@ All API responses follow a consistent format:
 {
   "image_path": "/path/to/image.jpg",
   "image_base64": null,
+  "image_file_id": null,
   "output_format": "glb",
   "model_preference": "trellis_image_to_raw_mesh"
 }
 ```
-- **Note**: Provide either `image_path` or `image_base64`, not both
+- **File Input Options**: Provide **one** of the following:
+  - `image_path`: Local file path (for server-side files)
+  - `image_base64`: Base64 encoded image data
+  - `image_file_id`: File ID from upload endpoint (**recommended**)
 - **Response**:
 ```json
 {
@@ -491,13 +564,19 @@ All API responses follow a consistent format:
 {
   "image_path": "/path/to/image.jpg",
   "image_base64": null,
+  "image_file_id": null,
   "texture_image_path": "/path/to/texture.jpg",
   "texture_image_base64": null,
+  "texture_image_file_id": null,
   "texture_resolution": 1024,
   "output_format": "glb",
   "model_preference": "trellis_image_to_textured_mesh"
 }
 ```
+- **File Input Options**: For both image and texture image, provide **one** of:
+  - `*_path`: Local file path (for server-side files)
+  - `*_base64`: Base64 encoded image data
+  - `*_file_id`: File ID from upload endpoint (**recommended**)
 - **Response**:
 ```json
 {
@@ -517,13 +596,19 @@ All API responses follow a consistent format:
 {
   "image_path": "/path/to/texture.jpg",
   "image_base64": null,
+  "image_file_id": null,
   "mesh_path": "/path/to/mesh.glb",
   "mesh_base64": null,
+  "mesh_file_id": null,
   "texture_resolution": 1024,
   "output_format": "glb",
   "model_preference": "trellis_image_mesh_painting"
 }
 ```
+- **File Input Options**: For both image and mesh, provide **one** of:
+  - `*_path`: Local file path (for server-side files)
+  - `*_base64`: Base64 encoded data
+  - `*_file_id`: File ID from upload endpoint (**recommended**)
 - **Response**:
 ```json
 {
@@ -543,10 +628,15 @@ All API responses follow a consistent format:
 {
   "mesh_path": "/path/to/incomplete_mesh.glb",
   "mesh_base64": null,
+  "mesh_file_id": null,
   "output_format": "glb",
   "model_preference": "holopart_part_completion"
 }
 ```
+- **File Input Options**: Provide **one** of the following:
+  - `mesh_path`: Local file path (for server-side files)
+  - `mesh_base64`: Base64 encoded mesh data
+  - `mesh_file_id`: File ID from upload endpoint (**recommended**)
 - **Response**:
 ```json
 {
@@ -556,77 +646,6 @@ All API responses follow a consistent format:
 }
 ```
 
-### Upload Image
-- **URL**: `/api/v1/mesh-generation/upload-image`
-- **Method**: `POST`
-- **Description**: Upload an image file for later use in mesh generation
-- **Authentication**: None required
-- **Request Body**: `multipart/form-data`
-  - `file`: Image file (PNG, JPG, JPEG, WebP, max 50MB)
-- **Response**:
-```json
-{
-  "file_id": "img_123456",
-  "original_filename": "my_image.jpg",
-  "file_type": "image/jpeg",
-  "file_size_mb": 2.5,
-  "message": "Image uploaded successfully"
-}
-```
-
-### Upload Mesh
-- **URL**: `/api/v1/mesh-generation/upload-mesh`
-- **Method**: `POST`
-- **Description**: Upload a mesh file for later use in mesh painting
-- **Authentication**: None required
-- **Request Body**: `multipart/form-data`
-  - `file`: Mesh file (GLB, OBJ, PLY, max 200MB)
-- **Response**:
-```json
-{
-  "file_id": "mesh_123456",
-  "original_filename": "my_mesh.glb",
-  "file_type": "model/gltf-binary",
-  "file_size_mb": 15.2,
-  "message": "Mesh uploaded successfully"
-}
-```
-
-### Text Mesh Painting with Upload
-- **URL**: `/api/v1/mesh-generation/text-mesh-painting-upload`
-- **Method**: `POST`
-- **Description**: Apply texture to an uploaded mesh using text description
-- **Authentication**: None required
-- **Request Body**: `multipart/form-data`
-  - `text_prompt`: Text description for painting
-  - `texture_resolution`: Texture resolution (default: 1024)
-  - `output_format`: Output format (default: "glb")
-  - `mesh_file`: Mesh file to paint
-- **Response**:
-```json
-{
-  "job_id": "job_123456",
-  "status": "queued",
-  "message": "Text-based mesh painting job with upload queued successfully"
-}
-```
-
-### Image to Raw Mesh with Upload
-- **URL**: `/api/v1/mesh-generation/image-to-raw-mesh-upload`
-- **Method**: `POST`
-- **Description**: Generate a 3D mesh from an uploaded image
-- **Authentication**: None required
-- **Request Body**: `multipart/form-data`
-  - `output_format`: Output format (default: "glb")
-  - `image_file`: Image file for mesh generation
-- **Response**:
-```json
-{
-  "job_id": "job_123456",
-  "status": "queued",
-  "message": "Image-to-raw-mesh generation job with upload queued successfully"
-}
-```
 
 ### Get Mesh Generation Supported Formats
 - **URL**: `/api/v1/mesh-generation/supported-formats`
@@ -654,42 +673,6 @@ All API responses follow a consistent format:
 }
 ```
 
-### Get Mesh Generation Presets
-- **URL**: `/api/v1/mesh-generation/generation-presets`
-- **Method**: `GET`
-- **Description**: Get available generation presets and their parameters
-- **Authentication**: None required
-- **Response**:
-```json
-{
-  "quality_presets": {
-    "low": {
-      "description": "Fast generation with basic quality",
-      "texture_resolution": 512,
-      "vertex_limit": 5000
-    },
-    "medium": {
-      "description": "Balanced generation quality and speed",
-      "texture_resolution": 1024,
-      "vertex_limit": 10000
-    },
-    "high": {
-      "description": "High quality generation (slower)",
-      "texture_resolution": 2048,
-      "vertex_limit": 20000
-    }
-  },
-  "style_presets": {
-    "realistic": "Photorealistic style with detailed textures",
-    "cartoon": "Stylized cartoon appearance",
-    "lowpoly": "Low polygon count geometric style",
-    "artistic": "Artistic interpretation with creative liberty"
-  }
-}
-```
-
----
-
 ## Mesh Segmentation Endpoints
 
 ### Segment Mesh
@@ -702,13 +685,17 @@ All API responses follow a consistent format:
 {
   "mesh_path": "/path/to/mesh.glb",
   "mesh_base64": null,
+  "mesh_file_id": null,
   "num_parts": 8,
   "output_format": "glb",
   "model_preference": "partfield_mesh_segmentation"
 }
 ```
+- **File Input Options**: Provide **one** of the following:
+  - `mesh_path`: Local file path (for server-side files)
+  - `mesh_base64`: Base64 encoded mesh data
+  - `mesh_file_id`: File ID from upload endpoint (**recommended**)
 - **Parameters**:
-  - `mesh_path` or `mesh_base64`: Input mesh (provide only one)
   - `num_parts`: Target number of parts (2-32)
   - `output_format`: Output format
   - `model_preference`: Model to use for segmentation
@@ -718,23 +705,6 @@ All API responses follow a consistent format:
   "job_id": "job_123456",
   "status": "queued",
   "message": "Mesh segmentation job queued successfully"
-}
-```
-
-### Upload Mesh for Segmentation
-- **URL**: `/api/v1/mesh-segmentation/upload-mesh`
-- **Method**: `POST`
-- **Description**: Upload a mesh file for segmentation
-- **Authentication**: None required
-- **Request Body**: `multipart/form-data`
-  - `file`: Mesh file (GLB format only)
-- **Response**:
-```json
-{
-  "filename": "mesh.glb",
-  "file_path": "/uploads/meshes/mesh.glb",
-  "size": 1024000,
-  "content_type": "model/gltf-binary"
 }
 ```
 
@@ -764,13 +734,16 @@ All API responses follow a consistent format:
 ```json
 {
   "mesh_path": "/path/to/mesh.glb",
+  "mesh_file_id": null,
   "rig_mode": "skeleton",
   "output_format": "fbx",
   "model_preference": "unirig_auto_rig"
 }
 ```
+- **File Input Options**: Provide **one** of the following:
+  - `mesh_path`: Local file path (for server-side files)
+  - `mesh_file_id`: File ID from upload endpoint (**recommended**)
 - **Parameters**:
-  - `mesh_path`: Path to input mesh file
   - `rig_mode`: Rig mode (`skeleton`, `skin`, or `full`)
   - `output_format`: Output format
   - `model_preference`: Model to use for rigging
@@ -795,7 +768,7 @@ All API responses follow a consistent format:
 {
   "filename": "character.fbx",
   "file_path": "/uploads/meshes/character.fbx",
-  "size": 2048000,
+  "size": 2047842,
   "content_type": "model/fbx"
 }
 ```
@@ -817,54 +790,264 @@ All API responses follow a consistent format:
 
 ## Workflow Examples
 
-### Example 1: Text to Mesh Generation
+### Example 1: Text to Textured Mesh Generation
 ```bash
-# 1. Generate mesh from text
-curl -X POST "http://localhost:8000/api/v1/mesh-generation/text-to-raw-mesh" \
+# Generate textured mesh from text (no file upload needed)
+curl -X POST "http://localhost:7842/api/v1/mesh-generation/text-to-textured-mesh" \
   -H "Content-Type: application/json" \
   -d '{
     "text_prompt": "A red sports car",
-    "output_format": "glb"
+    "texture_prompt": "shiny metallic paint",
+    "texture_resolution": 1024,
+    "output_format": "glb",
+    "model_preference": "trellis_text_to_textured_mesh"
   }'
 
 # Response: {"job_id": "job_123456", "status": "queued", "message": "..."}
 
-# 2. Check job status
-curl "http://localhost:8000/api/v1/system/jobs/job_123456"
+# Check job status (now includes visitable URLs!)
+curl "http://localhost:7842/api/v1/system/jobs/job_123456"
 
-# 3. Download result when completed
-curl "http://localhost:8000/api/v1/system/jobs/job_123456/download" \
+# Response includes direct URLs:
+# {
+#   "result": {
+#     "mesh_url": "http://localhost:7842/api/v1/system/jobs/job_123456/download",
+#     "thumbnail_url": "http://localhost:7842/api/v1/system/jobs/job_123456/thumbnail"
+#   }
+# }
+
+# Download mesh directly using the URL
+curl "http://localhost:7842/api/v1/system/jobs/job_123456/download" \
   -o "generated_car.glb"
+
+# View thumbnail directly in browser or download
+curl "http://localhost:7842/api/v1/system/jobs/job_123456/thumbnail" \
+  -o "car_preview.png"
+
+# Or get thumbnail as base64 for embedding
+curl "http://localhost:7842/api/v1/system/jobs/job_123456/thumbnail?format=base64"
 ```
 
-### Example 2: Image to Mesh with Upload
+### Example 2: Image to Textured Mesh Generation with File Upload
 ```bash
-# 1. Upload image
-curl -X POST "http://localhost:8000/api/v1/mesh-generation/upload-image" \
-  -F "file=@car_image.jpg"
+# 1. Upload image file
+curl -X POST "http://localhost:7842/api/v1/file-upload/image" \
+  -F "file=@/path/to/your/image.jpg"
 
-# 2. Generate mesh from uploaded image
-curl -X POST "http://localhost:8000/api/v1/mesh-generation/image-to-raw-mesh-upload" \
-  -F "image_file=@car_image.jpg" \
-  -F "output_format=glb"
+# Response: {"file_id": "abc123def456", "filename": "image.jpg", ...}
 
-# 3. Check status and download result
-curl "http://localhost:8000/api/v1/system/jobs/{job_id}/download" -o "result.glb"
-```
-
-### Example 3: Mesh Segmentation
-```bash
-# 1. Segment mesh
-curl -X POST "http://localhost:8000/api/v1/mesh-segmentation/segment-mesh" \
+# 2. Generate textured mesh using file ID
+curl -X POST "http://localhost:7842/api/v1/mesh-generation/image-to-textured-mesh" \
   -H "Content-Type: application/json" \
   -d '{
-    "mesh_path": "/path/to/mesh.glb",
-    "num_parts": 8,
-    "output_format": "glb"
+    "image_file_id": "abc123def456",
+    "texture_resolution": 1024,
+    "output_format": "glb",
+    "model_preference": "trellis_image_to_textured_mesh"
   }'
 
-# 2. Download segmented result
-curl "http://localhost:8000/api/v1/system/jobs/{job_id}/download" -o "segmented.glb"
+# Response: {"job_id": "job_789012", "status": "queued", "message": "..."}
+
+# 3. Check job status
+curl "http://localhost:7842/api/v1/system/jobs/job_789012"
+
+# 4. Download result when completed
+curl "http://localhost:7842/api/v1/system/jobs/job_789012/download" \
+  -o "generated_mesh.glb"
+```
+
+### Example 3: Image Mesh Painting with File Upload
+```bash
+# 1. Upload image and mesh files
+curl -X POST "http://localhost:7842/api/v1/file-upload/image" \
+  -F "file=@/path/to/texture.jpg"
+# Response: {"file_id": "img_123456", ...}
+
+curl -X POST "http://localhost:7842/api/v1/file-upload/mesh" \
+  -F "file=@/path/to/mesh.glb"
+# Response: {"file_id": "mesh_789012", ...}
+
+# 2. Apply texture to mesh
+curl -X POST "http://localhost:7842/api/v1/mesh-generation/image-mesh-painting" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_file_id": "img_123456",
+    "mesh_file_id": "mesh_789012",
+    "texture_resolution": 1024,
+    "output_format": "glb",
+    "model_preference": "trellis_image_mesh_painting"
+  }'
+
+# 3. Download textured mesh when completed
+curl "http://localhost:7842/api/v1/system/jobs/{job_id}/download" \
+  -o "textured_mesh.glb"
+```
+
+### Example 4: Mesh Segmentation with File Upload
+```bash
+# 1. Upload mesh file
+curl -X POST "http://localhost:7842/api/v1/file-upload/mesh" \
+  -F "file=@/path/to/mesh.glb"
+
+# Response: {"file_id": "mesh_abc123", ...}
+
+# 2. Segment mesh
+curl -X POST "http://localhost:7842/api/v1/mesh-segmentation/segment-mesh" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mesh_file_id": "mesh_abc123",
+    "num_parts": 8,
+    "output_format": "glb",
+    "model_preference": "partfield_mesh_segmentation"
+  }'
+
+# 3. Download segmented result
+curl "http://localhost:7842/api/v1/system/jobs/{job_id}/download" \
+  -o "segmented.glb"
+```
+
+### Example 5: Auto Rigging with File Upload
+```bash
+# 1. Upload mesh file
+curl -X POST "http://localhost:7842/api/v1/file-upload/mesh" \
+  -F "file=@/path/to/character.glb"
+
+# Response: {"file_id": "char_xyz789", ...}
+
+# 2. Generate rig
+curl -X POST "http://localhost:7842/api/v1/auto-rigging/generate-rig" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mesh_file_id": "char_xyz789",
+    "rig_mode": "skeleton",
+    "output_format": "fbx",
+    "model_preference": "unirig_auto_rig"
+  }'
+
+# 3. Download rigged mesh
+curl "http://localhost:7842/api/v1/system/jobs/{job_id}/download" \
+  -o "rigged_character.fbx"
+```
+
+### Example 6: Using Python with Requests
+```python
+import requests
+
+# Upload files
+def upload_file(file_path, file_type):
+    with open(file_path, 'rb') as f:
+        files = {'file': f}
+        response = requests.post(
+            f'http://localhost:7842/api/v1/file-upload/{file_type}',
+            files=files
+        )
+    return response.json()['file_id']
+
+# Upload image and mesh
+image_id = upload_file('/path/to/image.jpg', 'image')
+mesh_id = upload_file('/path/to/mesh.glb', 'mesh')
+
+# Apply texture to mesh
+response = requests.post(
+    'http://localhost:7842/api/v1/mesh-generation/image-mesh-painting',
+    json={
+        'image_file_id': image_id,
+        'mesh_file_id': mesh_id,
+        'texture_resolution': 1024,
+        'output_format': 'glb',
+        'model_preference': 'trellis_image_mesh_painting'
+    }
+)
+
+job_id = response.json()['job_id']
+print(f"Job submitted: {job_id}")
+
+# Check job status and get URLs
+job_status = requests.get(f'http://localhost:7842/api/v1/system/jobs/{job_id}').json()
+
+if job_status['status'] == 'completed':
+    result = job_status['result']
+    
+    # Get direct URLs for files
+    mesh_url = result['mesh_url']
+    thumbnail_url = result['thumbnail_url']
+    
+    print(f"Mesh URL: {mesh_url}")
+    print(f"Thumbnail URL: {thumbnail_url}")
+    
+    # Download files using URLs
+    mesh_response = requests.get(mesh_url)
+    with open('result.glb', 'wb') as f:
+        f.write(mesh_response.content)
+    
+    thumbnail_response = requests.get(thumbnail_url)
+    with open('preview.png', 'wb') as f:
+        f.write(thumbnail_response.content)
+    
+    # Or get thumbnail as base64 for embedding in HTML
+    thumbnail_base64 = requests.get(f"{thumbnail_url}?format=base64").json()
+    print(f"Thumbnail base64: {thumbnail_base64['base64_data'][:50]}...")
+```
+
+### Example 7: Query Historical Jobs
+```bash
+# Get recent jobs with pagination
+curl "http://localhost:7842/api/v1/system/jobs/history?limit=50&offset=0"
+
+# Filter by status
+curl "http://localhost:7842/api/v1/system/jobs/history?status=completed&limit=100"
+
+# Filter by feature type
+curl "http://localhost:7842/api/v1/system/jobs/history?feature=text_to_textured_mesh"
+
+# Filter by date range
+curl "http://localhost:7842/api/v1/system/jobs/history?start_date=2024-01-01T00:00:00Z&end_date=2024-01-31T23:59:59Z"
+
+# Response includes pagination and job details with thumbnails:
+{
+  "jobs": [
+    {
+      "job_id": "job_123456",
+      "status": "completed",
+      "feature": "text_to_textured_mesh",
+      "output_mesh_path": "/outputs/meshes/mesh_123456.glb",
+      "thumbnail_path": "/outputs/thumbnails/mesh_123456_thumb.png"
+    }
+  ],
+  "pagination": {
+    "limit": 50,
+    "offset": 0,
+    "total": 1250,
+    "has_more": true
+  }
+}
+```
+
+---
+
+### Get Upload Supported Formats
+- **URL**: `/api/v1/file-upload/supported-formats`
+- **Method**: `GET`
+- **Description**: Get supported file formats and upload limits
+- **Authentication**: None required
+- **Response**:
+```json
+{
+  "image": {
+    "formats": [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"],
+    "max_size_mb": 50,
+    "description": "Supported image formats for upload"
+  },
+  "mesh": {
+    "formats": [".glb", ".obj", ".fbx", ".ply", ".stl", ".gltf"],
+    "max_size_mb": 200,
+    "description": "Supported mesh formats for upload"
+  },
+  "retention": {
+    "default_hours": 24,
+    "description": "Files are automatically deleted after 24 hours"
+  }
+}
 ```
 
 ---
@@ -937,7 +1120,6 @@ curl "http://localhost:8000/api/v1/system/jobs/{job_id}/download" -o "segmented.
 - Review job logs and error messages in responses
 - Ensure adequate VRAM is available for model operations
 
----
 
-*Last updated: [Current Date]*
+*Last updated: [2025.07.12]*
 *API Version: 1.0.0* 

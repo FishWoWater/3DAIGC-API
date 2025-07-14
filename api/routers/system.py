@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from api.dependencies import get_current_settings, get_scheduler, verify_api_key
+from core.scheduler.multiprocess_scheduler import MultiprocessModelScheduler
 from core.utils.file_utils import encode_file_to_base64, get_file_size_mb
 
 router = APIRouter()
@@ -501,15 +502,206 @@ async def get_scheduler_status(request: Request):
         return {"scheduler": {"running": False, "error": str(e)}}
 
 
+@router.get("/jobs/history")
+async def get_jobs_history(
+    limit: int = 100,
+    offset: int = 0,
+    status: Optional[str] = None,
+    feature: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    scheduler: MultiprocessModelScheduler = Depends(get_scheduler),
+):
+    """
+    Get historical jobs with filtering support.
+
+    Args:
+        limit: Maximum number of jobs to return (max 500)
+        offset: Number of jobs to skip for pagination
+        status: Filter by job status (queued, processing, completed, failed, cancelled)
+        feature: Filter by feature type (e.g., text_to_textured_mesh)
+        start_date: Filter jobs after this date (ISO format: 2024-01-01T00:00:00Z)
+        end_date: Filter jobs before this date (ISO format: 2024-01-01T23:59:59Z)
+        scheduler: Model scheduler dependency
+
+    Returns:
+        Paginated list of historical jobs
+    """
+    try:
+        from datetime import datetime
+
+        from core.scheduler.job_queue import JobStatus
+
+        # Validate limit
+        if limit > 500:
+            limit = 500
+        if limit < 1:
+            limit = 1
+
+        # Validate offset
+        if offset < 0:
+            offset = 0
+
+        # Get all jobs from the database
+        all_jobs = []
+
+        # Get jobs from different statuses
+        job_statuses_to_fetch = []
+        if status:
+            # If status filter is provided, only fetch that status
+            try:
+                status_enum = JobStatus(status.lower())
+                job_statuses_to_fetch = [status_enum]
+            except ValueError:
+                # Invalid status provided
+                return {
+                    "jobs": [],
+                    "pagination": {
+                        "limit": limit,
+                        "offset": offset,
+                        "total": 0,
+                        "has_more": False,
+                    },
+                    "filters": {
+                        "status": status,
+                        "feature": feature,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                    },
+                    "timestamp": time.time(),
+                    "error": f"Invalid status: {status}. Valid statuses: queued, processing, completed, failed, cancelled",
+                }
+        else:
+            # Fetch all statuses
+            job_statuses_to_fetch = list(JobStatus)
+
+        # Collect all jobs
+        for job_status in job_statuses_to_fetch:
+            jobs = await scheduler.job_queue.get_jobs_by_status(job_status)
+            for job in jobs:
+                job_dict = job.to_dict()
+
+                # Apply feature filter if provided
+                if feature and job_dict.get("feature") != feature:
+                    continue
+
+                # Apply date filters if provided
+                if start_date:
+                    try:
+                        start_dt = datetime.fromisoformat(
+                            start_date.replace("Z", "+00:00")
+                        )
+                        job_created = datetime.fromisoformat(job_dict["created_at"])
+                        if job_created < start_dt:
+                            continue
+                    except ValueError:
+                        pass  # Skip invalid date format
+
+                if end_date:
+                    try:
+                        end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                        job_created = datetime.fromisoformat(job_dict["created_at"])
+                        if job_created > end_dt:
+                            continue
+                    except ValueError:
+                        pass  # Skip invalid date format
+
+                all_jobs.append(job_dict)
+
+        # Sort by created_at (newest first)
+        all_jobs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        # Apply pagination
+        total_jobs = len(all_jobs)
+        start_idx = offset
+        end_idx = min(offset + limit, total_jobs)
+        paginated_jobs = all_jobs[start_idx:end_idx]
+
+        return {
+            "jobs": paginated_jobs,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total_jobs,
+                "has_more": end_idx < total_jobs,
+            },
+            "filters": {
+                "status": status,
+                "feature": feature,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+            "timestamp": time.time(),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get jobs history: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve jobs history: {str(e)}"
+        )
+
+
 @router.get("/jobs/{job_id}", summary="Get job status")
 async def get_job_status(job_id: str, request: Request):
-    """Get status of a specific job"""
+    """Get status of a specific job with visitable URLs for files"""
     try:
         scheduler = await get_scheduler(request)
         job_status = await scheduler.get_job_status(job_id)
 
         if job_status is None:
             raise HTTPException(status_code=404, detail="Job not found")
+
+        # If job is completed and has results, convert file paths to URLs
+        if job_status.get("status") == "completed" and job_status.get("result"):
+            result = job_status["result"]
+
+            # Convert mesh file path to URL
+            mesh_path = None
+            possible_mesh_keys = [
+                "output_mesh_path",
+                "mesh_path",
+                "output_path",
+                "file_path",
+            ]
+
+            for key in possible_mesh_keys:
+                if key in result and result[key]:
+                    mesh_path = result[key]
+                    break
+
+            if mesh_path and os.path.exists(mesh_path):
+                # Create URL for mesh file
+                mesh_url = f"{request.base_url}api/v1/system/jobs/{job_id}/download"
+                result["mesh_url"] = mesh_url
+
+                # Add file info
+                file_stats = os.stat(mesh_path)
+                result["mesh_file_info"] = {
+                    "filename": os.path.basename(mesh_path),
+                    "file_size_bytes": file_stats.st_size,
+                    "file_size_mb": round(file_stats.st_size / (1024 * 1024), 2),
+                    "content_type": get_content_type_for_file(mesh_path),
+                    "file_extension": Path(mesh_path).suffix,
+                }
+
+            # Convert thumbnail path to URL
+            thumbnail_path = result.get("thumbnail_path")
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                # Create URL for thumbnail
+                thumbnail_url = (
+                    f"{request.base_url}api/v1/system/jobs/{job_id}/thumbnail"
+                )
+                result["thumbnail_url"] = thumbnail_url
+
+                # Add thumbnail file info
+                thumb_stats = os.stat(thumbnail_path)
+                result["thumbnail_file_info"] = {
+                    "filename": os.path.basename(thumbnail_path),
+                    "file_size_bytes": thumb_stats.st_size,
+                    "file_size_mb": round(thumb_stats.st_size / (1024 * 1024), 2),
+                    "content_type": get_content_type_for_file(thumbnail_path),
+                    "file_extension": Path(thumbnail_path).suffix,
+                }
 
         return job_status
     except HTTPException:
@@ -696,6 +888,117 @@ async def download_job_result(
         raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
 
+@router.get("/jobs/{job_id}/thumbnail", summary="Download job thumbnail")
+async def download_job_thumbnail(
+    job_id: str,
+    request: Request,
+    format: Optional[str] = Query(
+        None, description="Response format: 'file' (default) or 'base64'"
+    ),
+    filename: Optional[str] = Query(None, description="Custom filename for download"),
+):
+    """
+    Download the thumbnail image of a completed job.
+
+    Args:
+        job_id: The job ID to download thumbnail for
+        format: Response format ('file' for direct download, 'base64' for JSON response)
+        filename: Optional custom filename for the download
+
+    Returns:
+        FileResponse for direct download or JSON with base64 data
+    """
+    try:
+        scheduler = await get_scheduler(request)
+        job_status = await scheduler.get_job_status(job_id)
+
+        if job_status is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        if job_status.get("status") != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job is not completed yet. Current status: {job_status.get('status')}",
+            )
+
+        result = job_status.get("result", {})
+        if not result:
+            raise HTTPException(
+                status_code=404, detail="No result available for this job"
+            )
+
+        # Get thumbnail path
+        thumbnail_path = result.get("thumbnail_path")
+        if not thumbnail_path:
+            raise HTTPException(
+                status_code=404, detail="No thumbnail available for this job"
+            )
+
+        if not os.path.exists(thumbnail_path):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Thumbnail file not found at path: {thumbnail_path}",
+            )
+
+        # Determine the response format
+        response_format = format or "file"
+
+        if response_format == "base64":
+            # Return base64 encoded data
+            try:
+                base64_data = encode_file_to_base64(thumbnail_path)  # type: ignore
+                file_size_mb = get_file_size_mb(thumbnail_path)
+
+                return JSONResponse(
+                    {
+                        "job_id": job_id,
+                        "filename": filename or os.path.basename(thumbnail_path),
+                        "content_type": get_content_type_for_file(thumbnail_path),
+                        "file_size_mb": file_size_mb,
+                        "base64_data": base64_data,
+                        "generation_info": result.get("generation_info", {}),
+                        "download_time": datetime.utcnow().isoformat(),
+                    }
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to encode thumbnail as base64: {str(e)}",
+                )
+
+        else:
+            # Return file download
+            download_filename = (
+                filename or f"thumbnail_{job_id}_{os.path.basename(thumbnail_path)}"
+            )
+            content_type = get_content_type_for_file(thumbnail_path)
+
+            return FileResponse(
+                path=thumbnail_path,
+                filename=download_filename,
+                media_type=content_type,
+                headers={
+                    "X-Job-ID": job_id,
+                    "X-Thumbnail-Generated": str(
+                        result.get("generation_info", {}).get(
+                            "thumbnail_generated", "unknown"
+                        )
+                    ),
+                    "X-File-Size": str(os.path.getsize(thumbnail_path)),
+                },
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"Error downloading thumbnail: {str(e)}"
+        )
+
+
 @router.get("/jobs/{job_id}/info", summary="Get job result information")
 async def get_job_result_info(job_id: str, request: Request):
     """
@@ -765,9 +1068,13 @@ async def get_job_result_info(job_id: str, request: Request):
                 if k
                 not in ["output_mesh_path", "mesh_path", "output_path", "file_path"]
             },
-            "download_urls": {
+            "mesh_download_urls": {
                 "direct_download": f"/api/v1/system/jobs/{job_id}/download",
                 "base64_download": f"/api/v1/system/jobs/{job_id}/download?format=base64",
+            },
+            "thumbnail_download_urls": {
+                "direct_download": f"/api/v1/system/jobs/{job_id}/thumbnail",
+                "base64_download": f"/api/v1/system/jobs/{job_id}/thumbnail?format=base64",
             }
             if file_info.get("file_exists")
             else {},
@@ -883,36 +1190,6 @@ async def get_supported_formats():
                 "bmp": "image/bmp",
                 "tiff": "image/tiff",
             },
-        },
-    }
-
-
-@router.get("/generation-presets", summary="Get generation presets")
-async def get_generation_presets():
-    """Get available generation presets and their parameters"""
-    return {
-        "quality_presets": {
-            "low": {
-                "description": "Fast generation with basic quality",
-                "texture_resolution": 512,
-                "vertex_limit": 5000,
-            },
-            "medium": {
-                "description": "Balanced generation quality and speed",
-                "texture_resolution": 1024,
-                "vertex_limit": 10000,
-            },
-            "high": {
-                "description": "High quality generation (slower)",
-                "texture_resolution": 2048,
-                "vertex_limit": 20000,
-            },
-        },
-        "style_presets": {
-            "realistic": "Photorealistic style with detailed textures",
-            "cartoon": "Stylized cartoon appearance",
-            "lowpoly": "Low polygon count geometric style",
-            "artistic": "Artistic interpretation with creative liberty",
         },
     }
 

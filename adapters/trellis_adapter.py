@@ -16,6 +16,7 @@ from PIL import Image
 
 from core.models.base import ModelStatus
 from core.models.mesh_models import ImageToMeshModel, TextToMeshModel
+from core.utils.thumbnail_utils import generate_mesh_thumbnail
 
 logger = logging.getLogger(__name__)
 
@@ -184,17 +185,27 @@ class TrellisTextToMeshAdapterCommon(TextToMeshModel):
                 simplify=simplify,
                 texture_size=texture_resolution,
                 texture_bake_mode=texture_bake_mode,
+                forward_rot=False,
             )
 
             # Save mesh in requested format
             output_path = self._generate_output_path(text_prompt, output_format)
             mesh.export(output_path)
 
+            # Generate thumbnail
+            thumbnail_path = self._generate_thumbnail_path(output_path)
+            thumbnail_generated = generate_mesh_thumbnail(
+                str(output_path), str(thumbnail_path)
+            )
+
             # Create response
             response = self._create_common_response(inputs, output_format)
             response.update(
                 {
                     "output_mesh_path": str(output_path),
+                    "thumbnail_path": str(thumbnail_path)
+                    if thumbnail_generated
+                    else None,
                     "generation_info": {
                         "model": "TRELLIS",
                         "text_prompt": text_prompt,
@@ -207,6 +218,7 @@ class TrellisTextToMeshAdapterCommon(TextToMeshModel):
                         "texture_resolution": texture_resolution,
                         "texture_bake_mode": texture_bake_mode,
                         "simplify_ratio": simplify,
+                        "thumbnail_generated": thumbnail_generated,
                     },
                 }
             )
@@ -239,6 +251,16 @@ class TrellisTextToMeshAdapterCommon(TextToMeshModel):
         filename = f"trellis_{safe_name}_{timestamp}.{output_format}"
 
         return output_dir / filename
+
+    def _generate_thumbnail_path(self, mesh_path: Path) -> Path:
+        """Generate thumbnail file path based on mesh path."""
+        # Create thumbnails directory
+        thumbnail_dir = Path(os.getcwd()) / "outputs" / "thumbnails"
+        thumbnail_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate thumbnail filename
+        thumbnail_name = mesh_path.stem + "_thumb.png"
+        return thumbnail_dir / thumbnail_name
 
     def get_supported_formats(self) -> Dict[str, List[str]]:
         """Return supported input/output formats for TRELLIS."""
@@ -400,23 +422,36 @@ class TrellisImageToMeshAdapterCommon(ImageToMeshModel):
                 simplify=simplify,
                 texture_size=texture_resolution,
                 texture_bake_mode=tex_bake_mode,
+                forward_rot=False,
             )
 
             # Save mesh in requested format
-            output_path = self._generate_output_path(image_path, output_format)
+            output_path = self._generate_output_path(
+                image_path, output_format, is_prompt=False
+            )
             mesh.export(output_path)
+
+            # Generate thumbnail
+            thumbnail_path = self._generate_thumbnail_path(output_path)
+            thumbnail_generated = generate_mesh_thumbnail(
+                str(output_path), str(thumbnail_path)
+            )
 
             # Create response
             response = self._create_common_response(inputs, output_format)
             response.update(
                 {
                     "output_mesh_path": str(output_path),
+                    "thumbnail_path": str(thumbnail_path)
+                    if thumbnail_generated
+                    else None,
                     "generation_info": {
                         "model": "TRELLIS",
                         "image_path": image_path,
                         "seed": seed,
                         "vertex_count": len(mesh.vertices),
                         "face_count": len(mesh.faces),
+                        "thumbnail_generated": thumbnail_generated,
                     },
                 }
             )
@@ -459,6 +494,16 @@ class TrellisImageToMeshAdapterCommon(ImageToMeshModel):
         filename = f"trellis_{safe_name}_{timestamp}.{output_format}"
 
         return output_dir / filename
+
+    def _generate_thumbnail_path(self, mesh_path: Path) -> Path:
+        """Generate thumbnail file path based on mesh path."""
+        # Create thumbnails directory
+        thumbnail_dir = Path(os.getcwd()) / "outputs" / "thumbnails"
+        thumbnail_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate thumbnail filename
+        thumbnail_name = mesh_path.stem + "_thumb.png"
+        return thumbnail_dir / thumbnail_name
 
     def get_supported_formats(self) -> Dict[str, List[str]]:
         """Return supported input/output formats for TRELLIS."""

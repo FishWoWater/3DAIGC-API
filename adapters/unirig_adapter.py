@@ -254,6 +254,16 @@ class UniRigAdapter(AutoRigModel):
             logger.error(f"UniRig auto-rigging failed: {str(e)}")
             raise Exception(f"UniRig auto-rigging failed: {str(e)}")
 
+    def _generate_thumbnail_path(self, mesh_path: Path) -> Path:
+        """Generate thumbnail file path based on mesh path."""
+        # Create thumbnails directory
+        thumbnail_dir = Path(os.getcwd()) / "outputs" / "thumbnails"
+        thumbnail_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate thumbnail filename
+        thumbnail_name = mesh_path.stem + "_thumb.png"
+        return thumbnail_dir / thumbnail_name
+
     def _estimate_bone_count(self, rigged_file: Path) -> int:
         """
         Estimate bone count from rigged file.

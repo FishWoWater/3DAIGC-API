@@ -7,9 +7,10 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/FishWoWater/3DAIGC-API.svg)](https://github.com/FishWoWater/3DAIGC-API/stargazers)
-[![Code Size](https://img.shields.io/github/languages/code-size/FishWoWater/3DAIGC-API.svg)](https://github.com/FishWoWater/3DAIGC-API)
+[![Code Size](https://img.shields.io/github/repo-size/FishWoWater/3DAIGC-API.svg)](https://github.com/FishWoWater/3DAIGC-API)
 
 A FastAPI backend server framework for 3D generative AI models, with all of them ported to API-ready inference services, powered with GPU resource management and VRAM-aware scheduling.
+> This project is still under active development and may contain breaking changes.
 
 ## 🏗️ System Architecture
 The system provides a unified API gateway for multiple 3D AI models with automatic resource management:
@@ -147,7 +148,10 @@ P3D_RELOAD=true ./scripts/run_server.sh
 # production mode, (notice that you also need to change the .yaml specification)
 P3D_RELOAD=false ./scripts/run_server.sh
 # custom configuration
-P3D_HOST=0.0.0.0 P3D_PORT=7842 P3D_WORKERS=4 ./scripts/run_server.sh
+P3D_HOST=0.0.0.0 P3D_PORT=7842  ./scripts/run_server.sh
+
+# or on windows 
+.\scripts\run_server.bat 
 ```
 The server will be available at `http://localhost:7842` by default.
 
@@ -248,7 +252,7 @@ curl -X POST "http://localhost:7842/api/v1/auto-rigging/generate-rig" \
 ```bash
 # test all the adapters 
 python tests/run_adapter_tests.py 
-# test some specific adapter e.g. 
+# test some specific adapter e.g. testing trellis
 PYTHONPATH=. pytest tests/test_adapters/test_trellis_adapter.py -v -s -r s
 ```
 

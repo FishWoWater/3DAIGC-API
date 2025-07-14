@@ -412,6 +412,7 @@ class MultiprocessModelScheduler:
         self,
         gpu_monitor: Optional[GPUMonitor] = None,
         job_queue: Optional[JobQueue] = None,
+        database_url: Optional[str] = None,
     ):
         # Prevent multiple initialization
         if self._initialized:
@@ -423,7 +424,12 @@ class MultiprocessModelScheduler:
 
         self.gpu_monitor = gpu_monitor or GPUMonitor(tracking_mode=True)
         self.job_queue = job_queue or JobQueue(
-            persistence_file="data/job_queue_state.json", persistence_interval=30
+            database_url=database_url,
+            max_size=1000,
+            max_completed_jobs=1000,
+            # Keep legacy parameters for backward compatibility
+            persistence_file="data/job_queue_state.json",
+            persistence_interval=30,
         )
 
         # Worker management
@@ -749,8 +755,10 @@ class MultiprocessModelScheduler:
 
         # Get the first few jobs in queue to verify FIFO order
         queue_preview = []
-        async with self.job_queue._lock:
-            for i, job in enumerate(list(self.job_queue._queue)[:5]):  # First 5 jobs
+        async with self.job_queue._cache_lock:
+            for i, job in enumerate(
+                list(self.job_queue._queue_cache)[:5]
+            ):  # First 5 jobs
                 queue_preview.append(
                     {
                         "position": i + 1,
@@ -1095,6 +1103,7 @@ class MultiprocessModelScheduler:
             current_time = time.time()
 
             for worker_id, is_busy in self.worker_status.items():
+                logger.info(f"Worker {worker_id} is busy: {is_busy}")
                 if not is_busy:
                     worker_config = self.worker_configs[worker_id]
                     if worker_config.gpu_id == gpu_id:
@@ -1108,6 +1117,13 @@ class MultiprocessModelScheduler:
                             )
                             idle_workers_on_gpu.append(
                                 (worker_id, idle_time, worker_vram)
+                            )
+                            logger.info(
+                                f"Worker {worker_id} has been idle for {idle_time} seconds"
+                            )
+                        else:
+                            logger.info(
+                                f"Worker {worker_id} hasn't been idle for enough time: {idle_time}"
                             )
 
             # Sort by idle time (longest idle first)

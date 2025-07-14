@@ -11,10 +11,11 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.dependencies import get_scheduler
+from api.routers.file_upload import resolve_file_id
 from core.scheduler.job_queue import JobRequest
 from core.scheduler.multiprocess_scheduler import MultiprocessModelScheduler
 from core.utils.file_utils import save_base64_file, save_upload_file
@@ -68,6 +69,7 @@ class TextToRawMeshRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=("settings_",))
 
     @field_validator("output_format")
+    @classmethod
     def validate_output_format(cls, v):
         allowed_formats = ["glb", "obj", "fbx", "ply"]
         if v not in allowed_formats:
@@ -94,6 +96,9 @@ class TextMeshPaintingRequest(BaseModel):
         None, description="Path to the input mesh file (for local files)"
     )
     mesh_base64: Optional[str] = Field(None, description="Base64 encoded mesh data")
+    mesh_file_id: Optional[str] = Field(
+        None, description="File ID from upload endpoint"
+    )
     texture_resolution: int = Field(
         1024, description="Texture resolution", ge=256, le=4096
     )
@@ -103,19 +108,29 @@ class TextMeshPaintingRequest(BaseModel):
     )
 
     @field_validator("output_format")
+    @classmethod
     def validate_output_format(cls, v):
         allowed_formats = ["glb", "obj", "fbx", "ply"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
 
-    @field_validator("mesh_base64")
-    def validate_inputs(cls, v, values):
-        mesh_path = values.get("mesh_path")
-        if not mesh_path and not v:
-            raise ValueError("Either mesh_path or mesh_base64 must be provided")
-        if mesh_path and v:
-            raise ValueError("Only one of mesh_path or mesh_base64 should be provided")
+    @field_validator("mesh_file_id")
+    @classmethod
+    def validate_inputs(cls, v, info):
+        mesh_path = info.data.get("mesh_path")
+        mesh_base64 = info.data.get("mesh_base64")
+
+        inputs_provided = sum(bool(x) for x in [mesh_path, mesh_base64, v])
+
+        if inputs_provided == 0:
+            raise ValueError(
+                "One of mesh_path, mesh_base64, or mesh_file_id must be provided"
+            )
+        if inputs_provided > 1:
+            raise ValueError(
+                "Only one of mesh_path, mesh_base64, or mesh_file_id should be provided"
+            )
         return v
 
     model_config = ConfigDict(protected_namespaces=("settings_",))
@@ -128,26 +143,37 @@ class ImageToRawMeshRequest(BaseModel):
         None, description="Path to the input image (for local files)"
     )
     image_base64: Optional[str] = Field(None, description="Base64 encoded image data")
+    image_file_id: Optional[str] = Field(
+        None, description="File ID from upload endpoint"
+    )
     output_format: str = Field("glb", description="Output mesh format")
     model_preference: str = Field(
         "trellis_image_to_raw_mesh", description="Model name for mesh generation"
     )
 
     @field_validator("output_format")
+    @classmethod
     def validate_output_format(cls, v):
         allowed_formats = ["glb", "obj", "fbx", "ply"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
 
-    @field_validator("image_base64")
-    def validate_inputs(cls, v, values):
-        image_path = values.get("image_path")
-        if not image_path and not v:
-            raise ValueError("Either image_path or image_base64 must be provided")
-        if image_path and v:
+    @field_validator("image_file_id")
+    @classmethod
+    def validate_inputs(cls, v, info):
+        image_path = info.data.get("image_path")
+        image_base64 = info.data.get("image_base64")
+
+        inputs_provided = sum(bool(x) for x in [image_path, image_base64, v])
+
+        if inputs_provided == 0:
             raise ValueError(
-                "Only one of image_path or image_base64 should be provided"
+                "One of image_path, image_base64, or image_file_id must be provided"
+            )
+        if inputs_provided > 1:
+            raise ValueError(
+                "Only one of image_path, image_base64, or image_file_id should be provided"
             )
         return v
 
@@ -159,11 +185,17 @@ class ImageToTexturedMeshRequest(BaseModel):
 
     image_path: Optional[str] = Field(None, description="Path to the input image")
     image_base64: Optional[str] = Field(None, description="Base64 encoded image data")
+    image_file_id: Optional[str] = Field(
+        None, description="File ID from upload endpoint"
+    )
     texture_image_path: Optional[str] = Field(
         None, description="Path to the texture image"
     )
     texture_image_base64: Optional[str] = Field(
         None, description="Base64 encoded texture image"
+    )
+    texture_image_file_id: Optional[str] = Field(
+        None, description="Texture image file ID from upload endpoint"
     )
     texture_resolution: int = Field(
         1024, description="Texture resolution", ge=256, le=4096
@@ -174,20 +206,28 @@ class ImageToTexturedMeshRequest(BaseModel):
     )
 
     @field_validator("output_format")
+    @classmethod
     def validate_output_format(cls, v):
         allowed_formats = ["glb", "obj", "fbx", "ply"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
 
-    @field_validator("image_base64")
-    def validate_inputs(cls, v, values):
-        image_path = values.get("image_path")
-        if not image_path and not v:
-            raise ValueError("Either image_path or image_base64 must be provided")
-        if image_path and v:
+    @field_validator("image_file_id")
+    @classmethod
+    def validate_inputs(cls, v, info):
+        image_path = info.data.get("image_path")
+        image_base64 = info.data.get("image_base64")
+
+        inputs_provided = sum(bool(x) for x in [image_path, image_base64, v])
+
+        if inputs_provided == 0:
             raise ValueError(
-                "Only one of image_path or image_base64 should be provided"
+                "One of image_path, image_base64, or image_file_id must be provided"
+            )
+        if inputs_provided > 1:
+            raise ValueError(
+                "Only one of image_path, image_base64, or image_file_id should be provided"
             )
         return v
 
@@ -199,8 +239,14 @@ class ImageMeshPaintingRequest(BaseModel):
 
     image_path: Optional[str] = Field(None, description="Path to the input image")
     image_base64: Optional[str] = Field(None, description="Base64 encoded image data")
+    image_file_id: Optional[str] = Field(
+        None, description="File ID from upload endpoint"
+    )
     mesh_path: Optional[str] = Field(None, description="Path to the input mesh file")
     mesh_base64: Optional[str] = Field(None, description="Base64 encoded mesh data")
+    mesh_file_id: Optional[str] = Field(
+        None, description="File ID from upload endpoint"
+    )
     texture_resolution: int = Field(
         1024, description="Texture resolution", ge=256, le=4096
     )
@@ -210,28 +256,43 @@ class ImageMeshPaintingRequest(BaseModel):
     )
 
     @field_validator("output_format")
+    @classmethod
     def validate_output_format(cls, v):
         allowed_formats = ["glb", "obj", "fbx", "ply"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
 
-    @field_validator("mesh_base64")
-    def validate_inputs(cls, v, values):
-        image_path = values.get("image_path")
-        image_base64 = values.get("image_base64")
-        mesh_path = values.get("mesh_path")
+    @field_validator("mesh_file_id")
+    @classmethod
+    def validate_inputs(cls, v, info):
+        image_path = info.data.get("image_path")
+        image_base64 = info.data.get("image_base64")
+        image_file_id = info.data.get("image_file_id")
+        mesh_path = info.data.get("mesh_path")
+        mesh_base64 = info.data.get("mesh_base64")
 
-        if not image_path and not image_base64:
-            raise ValueError("Either image_path or image_base64 must be provided")
-        if image_path and image_base64:
+        image_inputs_provided = sum(
+            bool(x) for x in [image_path, image_base64, image_file_id]
+        )
+        mesh_inputs_provided = sum(bool(x) for x in [mesh_path, mesh_base64, v])
+
+        if image_inputs_provided == 0:
             raise ValueError(
-                "Only one of image_path or image_base64 should be provided"
+                "One of image_path, image_base64, or image_file_id must be provided"
             )
-        if not mesh_path and not v:
-            raise ValueError("Either mesh_path or mesh_base64 must be provided")
-        if mesh_path and v:
-            raise ValueError("Only one of mesh_path or mesh_base64 should be provided")
+        if image_inputs_provided > 1:
+            raise ValueError(
+                "Only one of image_path, image_base64, or image_file_id should be provided"
+            )
+        if mesh_inputs_provided == 0:
+            raise ValueError(
+                "One of mesh_path, mesh_base64, or mesh_file_id must be provided"
+            )
+        if mesh_inputs_provided > 1:
+            raise ValueError(
+                "Only one of mesh_path, mesh_base64, or mesh_file_id should be provided"
+            )
         return v
 
     model_config = ConfigDict(protected_namespaces=("settings_",))
@@ -243,10 +304,31 @@ class PartCompletionRequest(BaseModel):
 
     mesh_path: Optional[str] = Field(None, description="Path to the input mesh file")
     mesh_base64: Optional[str] = Field(None, description="Base64 encoded mesh data")
+    mesh_file_id: Optional[str] = Field(
+        None, description="File ID from upload endpoint"
+    )
     output_format: str = Field("glb", description="Output mesh format")
     model_preference: str = Field(
         "holopart_part_completion", description="Model name for part completion"
     )
+
+    @field_validator("mesh_file_id")
+    @classmethod
+    def validate_inputs(cls, v, info):
+        mesh_path = info.data.get("mesh_path")
+        mesh_base64 = info.data.get("mesh_base64")
+
+        inputs_provided = sum(bool(x) for x in [mesh_path, mesh_base64, v])
+
+        if inputs_provided == 0:
+            raise ValueError(
+                "One of mesh_path, mesh_base64, or mesh_file_id must be provided"
+            )
+        if inputs_provided > 1:
+            raise ValueError(
+                "Only one of mesh_path, mesh_base64, or mesh_file_id should be provided"
+            )
+        return v
 
     model_config = ConfigDict(protected_namespaces=("settings_",))
 
@@ -260,29 +342,23 @@ class MeshGenerationResponse(BaseModel):
     message: str = Field(..., description="Status message")
 
 
-class FileUploadResponse(BaseModel):
-    """Response for file upload operations"""
-
-    file_id: str = Field(..., description="Unique file identifier")
-    original_filename: str = Field(..., description="Original filename")
-    file_type: str = Field(..., description="Detected file type")
-    file_size_mb: float = Field(..., description="File size in MB")
-    message: str = Field(..., description="Upload status message")
-
-
 # Helper function to process file inputs
 async def process_file_input(
     file_path: Optional[str] = None,
     base64_data: Optional[str] = None,
+    file_id: Optional[str] = None,
     upload_file: Optional[UploadFile] = None,
     input_type: str = "image",
 ) -> str:
     """Process various file input formats and return the processed file path"""
 
-    if not any([file_path, base64_data, upload_file]):
+    inputs = [file_path, base64_data, file_id, upload_file]
+    provided_inputs = [x for x in inputs if x is not None]
+
+    if not provided_inputs:
         raise HTTPException(status_code=400, detail=f"No {input_type} input provided")
 
-    if sum(bool(x) for x in [file_path, base64_data, upload_file]) > 1:
+    if len(provided_inputs) > 1:
         raise HTTPException(
             status_code=400,
             detail=f"Multiple {input_type} inputs provided. Only one allowed.",
@@ -306,6 +382,16 @@ async def process_file_input(
                 base64_data, f"input_{input_type}", temp_dir
             )
             return str(file_info["file_path"])
+
+        elif file_id:
+            # Process file ID
+            resolved_path = resolve_file_id(file_id)
+            if not resolved_path:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"{input_type.title()} file not found or expired",
+                )
+            return resolved_path
 
         elif upload_file:
             # Process uploaded file
@@ -445,6 +531,7 @@ async def text_mesh_painting(
         mesh_file_path = await process_file_input(
             file_path=mesh_request.mesh_path,
             base64_data=mesh_request.mesh_base64,
+            file_id=mesh_request.mesh_file_id,
             input_type="mesh",
         )
 
@@ -503,6 +590,7 @@ async def image_to_raw_mesh(
         image_file_path = await process_file_input(
             file_path=mesh_request.image_path,
             base64_data=mesh_request.image_base64,
+            file_id=mesh_request.image_file_id,
             input_type="image",
         )
 
@@ -558,6 +646,7 @@ async def image_to_textured_mesh(
         image_file_path = await process_file_input(
             file_path=mesh_request.image_path,
             base64_data=mesh_request.image_base64,
+            file_id=mesh_request.image_file_id,
             input_type="image",
         )
 
@@ -567,6 +656,7 @@ async def image_to_textured_mesh(
             texture_image_path = await process_file_input(
                 file_path=mesh_request.texture_image_path,
                 base64_data=mesh_request.texture_image_base64,
+                file_id=mesh_request.texture_image_file_id,
                 input_type="texture_image",
             )
 
@@ -624,6 +714,7 @@ async def image_mesh_painting(
         image_file_path = await process_file_input(
             file_path=mesh_request.image_path,
             base64_data=mesh_request.image_base64,
+            file_id=mesh_request.image_file_id,
             input_type="image",
         )
 
@@ -631,6 +722,7 @@ async def image_mesh_painting(
         mesh_file_path = await process_file_input(
             file_path=mesh_request.mesh_path,
             base64_data=mesh_request.mesh_base64,
+            file_id=mesh_request.mesh_file_id,
             input_type="mesh",
         )
 
@@ -681,6 +773,7 @@ async def part_completion(
         mesh_file_path = await process_file_input(
             file_path=mesh_request.mesh_path,
             base64_data=mesh_request.mesh_base64,
+            file_id=mesh_request.mesh_file_id,
             input_type="mesh",
         )
 
@@ -711,172 +804,6 @@ async def part_completion(
         raise HTTPException(status_code=500, detail=f"Failed to schedule job: {str(e)}")
 
 
-@router.post("/upload-image", response_model=FileUploadResponse)
-async def upload_image_for_mesh(
-    file: UploadFile = File(..., description="Image file (PNG, JPG, JPEG, WebP)"),
-):
-    """
-    Upload an image file for later use in mesh generation.
-
-    Args:
-        file: Image file to upload
-
-    Returns:
-        File upload information including file ID for later reference
-    """
-    try:
-        # Validate file type
-        if not file.content_type or not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="File must be an image")
-
-        # Create upload directory
-        upload_dir = Path("uploads/images")
-        upload_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save uploaded file
-        file_info = await save_upload_file(file, str(upload_dir), max_size_mb=50)
-
-        return FileUploadResponse(
-            file_id=str(file_info["saved_filename"]),
-            original_filename=str(file_info["original_filename"]),
-            file_type=str(file_info["file_type"]),
-            file_size_mb=float(file_info["file_size_mb"]),
-            message="Image uploaded successfully",
-        )
-
-    except Exception as e:
-        logger.error(f"Error uploading image: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-
-@router.post("/upload-mesh", response_model=FileUploadResponse)
-async def upload_mesh_for_painting(
-    file: UploadFile = File(..., description="Mesh file (GLB, OBJ, PLY)"),
-):
-    """
-    Upload a mesh file for later use in mesh painting.
-
-    Args:
-        file: Mesh file to upload
-
-    Returns:
-        File upload information including file ID for later reference
-    """
-    try:
-        # Validate file type
-        allowed_extensions = [".glb", ".obj", ".ply", ".fbx"]
-        file_ext = Path(file.filename or "").suffix.lower()
-        if file_ext not in allowed_extensions:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File must be a mesh file. Allowed: {allowed_extensions}",
-            )
-
-        # Create upload directory
-        upload_dir = Path("uploads/meshes")
-        upload_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save uploaded file
-        file_info = await save_upload_file(file, str(upload_dir), max_size_mb=200)
-
-        return FileUploadResponse(
-            file_id=str(file_info["saved_filename"]),
-            original_filename=str(file_info["original_filename"]),
-            file_type=str(file_info["file_type"]),
-            file_size_mb=float(file_info["file_size_mb"]),
-            message="Mesh uploaded successfully",
-        )
-
-    except Exception as e:
-        logger.error(f"Error uploading mesh: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-
-# Enhanced file endpoints using upload IDs
-@router.post("/text-mesh-painting-upload", response_model=MeshGenerationResponse)
-async def text_mesh_painting_with_upload(
-    text_prompt: str = Form(..., description="Text description for painting"),
-    texture_resolution: int = Form(1024, description="Texture resolution"),
-    output_format: str = Form("glb", description="Output format"),
-    mesh_file: UploadFile = File(..., description="Mesh file to paint"),
-    scheduler: MultiprocessModelScheduler = Depends(get_scheduler),
-):
-    """
-    Texture a 3D mesh using uploaded file and text description.
-    """
-    try:
-        # Process uploaded mesh
-        mesh_file_path = await process_file_input(
-            upload_file=mesh_file, input_type="mesh"
-        )
-
-        job_request = JobRequest(
-            feature="text_mesh_painting",
-            inputs={
-                "text_prompt": text_prompt,
-                "mesh_path": mesh_file_path,
-                "output_format": output_format,
-                "texture_resolution": texture_resolution,
-            },
-            priority=1,
-            metadata={"feature_type": "text_mesh_painting"},
-        )
-
-        job_id = await scheduler.schedule_job(job_request)
-
-        return MeshGenerationResponse(
-            job_id=job_id,
-            status="queued",
-            message="Text-based mesh painting job with upload queued successfully",
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error scheduling text-mesh-painting with upload: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to schedule job: {str(e)}")
-
-
-@router.post("/image-to-raw-mesh-upload", response_model=MeshGenerationResponse)
-async def image_to_raw_mesh_with_upload(
-    output_format: str = Form("glb", description="Output format"),
-    image_file: UploadFile = File(..., description="Image file for mesh generation"),
-    scheduler: MultiprocessModelScheduler = Depends(get_scheduler),
-):
-    """
-    Generate a 3D mesh from uploaded image file.
-    """
-    try:
-        # Process uploaded image
-        image_file_path = await process_file_input(
-            upload_file=image_file, input_type="image"
-        )
-
-        job_request = JobRequest(
-            feature="image_to_raw_mesh",
-            inputs={
-                "image_path": image_file_path,
-                "output_format": output_format,
-            },
-            priority=1,
-            metadata={"feature_type": "image_to_raw_mesh"},
-        )
-
-        job_id = await scheduler.schedule_job(job_request)
-
-        return MeshGenerationResponse(
-            job_id=job_id,
-            status="queued",
-            message="Image-to-raw-mesh generation job with upload queued successfully",
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error scheduling image-to-raw-mesh with upload: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to schedule job: {str(e)}")
-
-
 # Utility endpoints
 @router.get("/supported-formats")
 async def get_supported_formats():
@@ -896,35 +823,5 @@ async def get_supported_formats():
             "image_max_size_mb": 50,
             "mesh_max_size_mb": 200,
             "image_max_resolution": [4096, 4096],
-        },
-    }
-
-
-@router.get("/generation-presets")
-async def get_generation_presets():
-    """Get available generation presets and their parameters"""
-    return {
-        "quality_presets": {
-            "low": {
-                "description": "Fast generation with basic quality",
-                "texture_resolution": 512,
-                "vertex_limit": 5000,
-            },
-            "medium": {
-                "description": "Balanced generation quality and speed",
-                "texture_resolution": 1024,
-                "vertex_limit": 10000,
-            },
-            "high": {
-                "description": "High quality generation (slower)",
-                "texture_resolution": 2048,
-                "vertex_limit": 20000,
-            },
-        },
-        "style_presets": {
-            "realistic": "Photorealistic style with detailed textures",
-            "cartoon": "Stylized cartoon appearance",
-            "lowpoly": "Low polygon count geometric style",
-            "artistic": "Artistic interpretation with creative liberty",
         },
     }

@@ -16,6 +16,7 @@ from PIL import Image
 
 from core.models.base import ModelStatus
 from core.models.mesh_models import ImageToMeshModel
+from core.utils.thumbnail_utils import generate_mesh_thumbnail
 from utils.file_utils import OutputPathGenerator
 from utils.mesh_utils import MeshProcessor
 
@@ -185,6 +186,16 @@ class Hunyuan3DV20ImageToMeshAdapterCommon(ImageToMeshModel):
             self.model_id, base_name, output_format
         )
 
+    def _generate_thumbnail_path(self, mesh_path: Path) -> Path:
+        """Generate thumbnail file path based on mesh path."""
+        # Create thumbnails directory
+        thumbnail_dir = Path(os.getcwd()) / "outputs" / "thumbnails"
+        thumbnail_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate thumbnail filename
+        thumbnail_name = mesh_path.stem + "_thumb.png"
+        return thumbnail_dir / thumbnail_name
+
     def get_supported_formats(self) -> Dict[str, List[str]]:
         """Return supported input/output formats for Hunyuan3D 2.0."""
         return {"input": ["png", "jpg", "jpeg"], "output": ["glb", "obj"]}
@@ -266,6 +277,12 @@ class Hunyuan3DV20ImageToRawMeshAdapter(Hunyuan3DV20ImageToMeshAdapterCommon):
             # Save raw mesh
             mesh_result.export(str(output_path))
 
+            # Generate thumbnail
+            thumbnail_path = self._generate_thumbnail_path(output_path)
+            thumbnail_generated = generate_mesh_thumbnail(
+                str(output_path), str(thumbnail_path)
+            )
+
             # Load final mesh for statistics
             final_mesh = self.mesh_processor.load_mesh(output_path)
             mesh_stats = self.mesh_processor.get_mesh_stats(final_mesh)
@@ -273,6 +290,7 @@ class Hunyuan3DV20ImageToRawMeshAdapter(Hunyuan3DV20ImageToMeshAdapterCommon):
             # Create response
             response = {
                 "output_mesh_path": str(output_path),
+                "thumbnail_path": str(thumbnail_path) if thumbnail_generated else None,
                 "success": True,
                 "generation_info": {
                     "model": self.model_id,
@@ -284,6 +302,7 @@ class Hunyuan3DV20ImageToRawMeshAdapter(Hunyuan3DV20ImageToMeshAdapterCommon):
                     "num_inference_steps": num_inference_steps,
                     "octree_resolution": octree_resolution,
                     "seed": seed,
+                    "thumbnail_generated": thumbnail_generated,
                 },
             }
 
@@ -378,6 +397,12 @@ class Hunyuan3DV20ImageToTexturedMeshAdapter(Hunyuan3DV20ImageToMeshAdapterCommo
             # Save final mesh
             final_mesh.export(str(output_path))
 
+            # Generate thumbnail
+            thumbnail_path = self._generate_thumbnail_path(output_path)
+            thumbnail_generated = generate_mesh_thumbnail(
+                str(output_path), str(thumbnail_path)
+            )
+
             # Load final mesh for statistics
             loaded_mesh = self.mesh_processor.load_mesh(output_path)
             mesh_stats = self.mesh_processor.get_mesh_stats(loaded_mesh)
@@ -385,6 +410,7 @@ class Hunyuan3DV20ImageToTexturedMeshAdapter(Hunyuan3DV20ImageToMeshAdapterCommo
             # Create response
             response = {
                 "output_mesh_path": str(output_path),
+                "thumbnail_path": str(thumbnail_path) if thumbnail_generated else None,
                 "success": True,
                 "generation_info": {
                     "model": self.model_id,
@@ -396,6 +422,7 @@ class Hunyuan3DV20ImageToTexturedMeshAdapter(Hunyuan3DV20ImageToMeshAdapterCommo
                     "num_inference_steps": num_inference_steps,
                     "octree_resolution": octree_resolution,
                     "seed": seed,
+                    "thumbnail_generated": thumbnail_generated,
                 },
             }
 
@@ -490,6 +517,12 @@ class Hunyuan3DV20ImageMeshPaintingAdapter(Hunyuan3DV20ImageToMeshAdapterCommon)
             # Save the textured mesh
             final_mesh.export(str(output_path))
 
+            # Generate thumbnail
+            thumbnail_path = self._generate_thumbnail_path(output_path)
+            thumbnail_generated = generate_mesh_thumbnail(
+                str(output_path), str(thumbnail_path)
+            )
+
             # Load final mesh for statistics
             loaded_mesh = self.mesh_processor.load_mesh(output_path)
             mesh_stats = self.mesh_processor.get_mesh_stats(loaded_mesh)
@@ -497,6 +530,7 @@ class Hunyuan3DV20ImageMeshPaintingAdapter(Hunyuan3DV20ImageToMeshAdapterCommon)
             # Create response
             response = {
                 "output_mesh_path": str(output_path),
+                "thumbnail_path": str(thumbnail_path) if thumbnail_generated else None,
                 "success": True,
                 "painting_info": {
                     "model": self.model_id,
@@ -505,6 +539,7 @@ class Hunyuan3DV20ImageMeshPaintingAdapter(Hunyuan3DV20ImageToMeshAdapterCommon)
                     "output_format": output_format,
                     "vertex_count": mesh_stats["vertex_count"],
                     "face_count": mesh_stats["face_count"],
+                    "thumbnail_generated": thumbnail_generated,
                 },
             }
 

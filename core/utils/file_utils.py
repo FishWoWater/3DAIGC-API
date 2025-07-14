@@ -25,6 +25,11 @@ SUPPORTED_IMAGE_FORMATS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff", ".
 SUPPORTED_MESH_FORMATS = [".glb", ".obj", ".fbx", ".ply", ".stl", ".gltf"]
 SUPPORTED_TEXTURE_FORMATS = [".jpg", ".jpeg", ".png", ".tga", ".exr", ".hdr"]
 
+# Validation limits
+MAX_IMAGE_RESOLUTION = (2048, 2048)  # Maximum image resolution
+MAX_MESH_VERTICES = 20000  # Maximum number of vertices
+MAX_MESH_FACES = 20000  # Maximum number of faces
+
 # MIME type mappings
 MIME_TYPE_MAPPING = {
     "image/jpeg": ".jpg",
@@ -82,7 +87,7 @@ def detect_file_type_from_content(file_path: str) -> str:
 
 
 def validate_image_file(
-    file_path: str, max_resolution: Tuple[int, int] = (4096, 4096)
+    file_path: str, max_resolution: Tuple[int, int] = MAX_IMAGE_RESOLUTION
 ) -> Dict:
     """Validate and get info about an image file"""
     try:
@@ -104,6 +109,61 @@ def validate_image_file(
                 "mode": mode,
                 "file_size_mb": get_file_size_mb(file_path),
             }
+    except Exception as e:
+        return {"valid": False, "error": str(e)}
+
+
+def validate_mesh_file(
+    file_path: str,
+    max_vertices: int = MAX_MESH_VERTICES,
+    max_faces: int = MAX_MESH_FACES,
+) -> Dict:
+    """Validate and get info about a mesh file"""
+    try:
+        import trimesh
+
+        # Load mesh using trimesh
+        mesh = trimesh.load(file_path)
+
+        # Handle scene objects
+        if isinstance(mesh, trimesh.Scene):
+            # Get the combined mesh from scene
+            mesh = mesh.dump(concatenate=True)
+
+        if not isinstance(mesh, trimesh.Trimesh):
+            return {
+                "valid": False,
+                "error": f"Loaded object is not a valid mesh: {type(mesh)}",
+            }
+
+        # Get mesh statistics
+        vertex_count = len(mesh.vertices)
+        face_count = len(mesh.faces)
+
+        # Check vertex count
+        if vertex_count > max_vertices:
+            raise ValueError(
+                f"Mesh has {vertex_count} vertices, which exceeds maximum {max_vertices}"
+            )
+
+        # Check face count
+        if face_count > max_faces:
+            raise ValueError(
+                f"Mesh has {face_count} faces, which exceeds maximum {max_faces}"
+            )
+
+        # Basic mesh validation
+        if vertex_count == 0 or face_count == 0:
+            raise ValueError("Mesh is empty (no vertices or faces)")
+
+        return {
+            "valid": True,
+            "vertex_count": vertex_count,
+            "face_count": face_count,
+            "file_size_mb": get_file_size_mb(file_path),
+            "is_watertight": bool(mesh.is_watertight),
+        }
+
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
@@ -144,7 +204,7 @@ async def save_upload_file(
     destination_dir: str,
     max_size_mb: int = 100,
     validate_content: bool = True,
-) -> Dict[str, Union[str, int, float, bool]]:
+) -> Dict[str, Union[str, int, float, bool, Dict]]:
     """Save uploaded file to destination directory with enhanced validation"""
     try:
         # Create destination directory if it doesn't exist
@@ -189,6 +249,14 @@ async def save_upload_file(
                         upload_file.filename or "unknown",
                         validation_info.get("error", "Invalid image file"),
                     )
+            elif file_type == "mesh":
+                validation_info = validate_mesh_file(str(file_path))
+                if not validation_info.get("valid", False):
+                    os.remove(file_path)
+                    raise FileUploadError(
+                        upload_file.filename or "unknown",
+                        validation_info.get("error", "Invalid mesh file"),
+                    )
 
         logger.info(f"Saved uploaded file: {file_path} ({file_size_mb:.1f}MB)")
 
@@ -210,7 +278,7 @@ async def save_upload_file(
 
 async def save_base64_file(
     base64_data: str, filename: str, destination_dir: str, validate_content: bool = True
-) -> Dict[str, Union[str, int, float, bool]]:
+) -> Dict[str, Union[str, int, float, bool, Dict]]:
     """Save base64 encoded data to file with enhanced validation"""
     try:
         # Create destination directory if it doesn't exist
@@ -274,6 +342,13 @@ async def save_base64_file(
                     raise FileUploadError(
                         filename, validation_info.get("error", "Invalid image file")
                     )
+            elif file_type == "mesh":
+                validation_info = validate_mesh_file(str(file_path))
+                if not validation_info.get("valid", False):
+                    os.remove(file_path)
+                    raise FileUploadError(
+                        filename, validation_info.get("error", "Invalid mesh file")
+                    )
 
         logger.info(f"Saved base64 file: {file_path} ({file_size_mb:.1f}MB)")
 
@@ -299,7 +374,7 @@ async def process_mixed_input(
     file_path: Optional[str] = None,
     destination_dir: str = "",
     max_size_mb: int = 100,
-) -> Dict[str, Union[str, int, float, bool]]:
+) -> Dict[str, Union[str, int, float, bool, Dict]]:
     """Process input that can be upload, base64, or existing file path"""
     if sum(bool(x) for x in [file_upload, base64_data, file_path]) != 1:
         raise ValueError(
@@ -326,6 +401,12 @@ async def process_mixed_input(
                 raise FileUploadError(
                     file_path, validation_info.get("error", "Invalid image file")
                 )
+        elif file_type == "mesh":
+            validation_info = validate_mesh_file(file_path)
+            if not validation_info.get("valid", False):
+                raise FileUploadError(
+                    file_path, validation_info.get("error", "Invalid mesh file")
+                )
 
         return {
             "file_path": file_path,
@@ -336,6 +417,9 @@ async def process_mixed_input(
             "file_type": file_type,
             "validation_info": validation_info,
         }
+
+    # This should never be reached due to the validation at the start
+    raise ValueError("Invalid input combination")
 
 
 def encode_file_to_base64(file_path: str) -> str:

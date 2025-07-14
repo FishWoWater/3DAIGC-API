@@ -3,7 +3,7 @@
 Comprehensive Test Client for 3D Generative Models API
 
 This script tests all available models and features using example assets from the assets directory.
-It submits jobs, monitors their progress, downloads results, and saves them to organized directories.
+It uploads files to the server, submits jobs, monitors their progress, downloads results, and saves them to organized directories.
 
 Features tested:
 - Text-to-textured-mesh (TRELLIS)
@@ -54,6 +54,9 @@ class ComprehensiveModelTester:
         self.poll_interval = poll_interval
         self.output_base_dir = Path(output_base_dir)
         self.concurrent_mode = concurrent_mode
+
+        # File upload cache to avoid re-uploading the same files
+        self.file_upload_cache: Dict[str, str] = {}
 
         # Create output directory structure
         self.setup_output_directories()
@@ -109,6 +112,92 @@ class ComprehensiveModelTester:
             handlers=[logging.FileHandler(log_file), logging.StreamHandler()],
         )
         self.logger = logging.getLogger(__name__)
+
+    def upload_file(self, file_path: str, file_type: str) -> Optional[str]:
+        """
+        Upload a file to the server and return file ID.
+
+        Args:
+            file_path: Path to the file to upload
+            file_type: Type of file ('image' or 'mesh')
+
+        Returns:
+            File ID if successful, None otherwise
+        """
+        file_path_obj = Path(file_path)
+
+        # Check cache first
+        cache_key = f"{file_type}:{file_path_obj.absolute()}"
+        if cache_key in self.file_upload_cache:
+            file_id = self.file_upload_cache[cache_key]
+            self.logger.info(f"Using cached file ID {file_id} for {file_path_obj}")
+            return file_id
+
+        if not file_path_obj.exists():
+            self.logger.error(f"File not found: {file_path_obj}")
+            return None
+
+        try:
+            endpoint = f"{self.api_base_url}/file-upload/{file_type}"
+
+            with open(file_path_obj, "rb") as f:
+                files = {"file": (file_path_obj.name, f, "application/octet-stream")}
+                response = requests.post(endpoint, files=files, timeout=60)
+
+            if response.status_code == 200:
+                result = response.json()
+                file_id = result.get("file_id")
+                if file_id:
+                    self.file_upload_cache[cache_key] = file_id
+                    self.logger.info(
+                        f"Uploaded {file_type} file {file_path_obj.name} -> {file_id}"
+                    )
+                    return file_id
+                else:
+                    self.logger.error(
+                        f"No file_id in upload response for {file_path_obj}"
+                    )
+                    return None
+            else:
+                self.logger.error(
+                    f"Upload failed for {file_path_obj}: {response.status_code} - {response.text}"
+                )
+                return None
+
+        except Exception as e:
+            self.logger.error(f"Exception uploading {file_path_obj}: {e}")
+            return None
+
+    def prepare_test_config(self, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Prepare a test configuration by uploading files and adding file IDs.
+
+        Args:
+            config: Test configuration
+
+        Returns:
+            Updated configuration with file IDs, or None if upload fails
+        """
+        updated_config = config.copy()
+
+        # Upload files if needed
+        files_to_upload = config.get("files_to_upload", [])
+        if files_to_upload:
+            for file_type, file_path in files_to_upload:
+                file_id = self.upload_file(file_path, file_type)
+                if file_id:
+                    # Add file ID to input data
+                    if file_type == "image":
+                        updated_config["input_data"]["image_file_id"] = file_id
+                    elif file_type == "mesh":
+                        updated_config["input_data"]["mesh_file_id"] = file_id
+                    else:
+                        self.logger.warning(f"Unknown file type: {file_type}")
+                else:
+                    self.logger.error(f"Failed to upload {file_type} file: {file_path}")
+                    return None
+
+        return updated_config
 
     def setup_test_configurations(self) -> List[Dict[str, Any]]:
         """Setup test configurations for all model/feature combinations"""
@@ -171,11 +260,11 @@ class ComprehensiveModelTester:
                     "model_preference": "trellis_text_mesh_painting",
                     "input_data": {
                         "text_prompt": "rusty metal texture with weathered surface",
-                        "mesh_path": str(mesh_file),
                         "texture_resolution": 1024,
                         "output_format": "glb",
                     },
                     "expected_outputs": ["output_mesh_path"],
+                    "files_to_upload": [("mesh", str(mesh_file))],
                 }
             )
 
@@ -191,11 +280,11 @@ class ComprehensiveModelTester:
                     "endpoint": "/mesh-generation/image-to-textured-mesh",
                     "model_preference": "trellis_image_to_textured_mesh",
                     "input_data": {
-                        "image_path": str(image_file),
                         "texture_resolution": 1024,
                         "output_format": "glb",
                     },
                     "expected_outputs": ["output_mesh_path"],
+                    "files_to_upload": [("image", str(image_file))],
                 }
             )
 
@@ -209,11 +298,11 @@ class ComprehensiveModelTester:
                         "endpoint": "/mesh-generation/image-to-textured-mesh",
                         "model_preference": "hunyuan3d_2_0_image_to_textured_mesh",
                         "input_data": {
-                            "image_path": str(image_files[0]),
                             "texture_resolution": 1024,
                             "output_format": "glb",
                         },
                         "expected_outputs": ["output_mesh_path"],
+                        "files_to_upload": [("image", str(image_files[0]))],
                     },
                     {
                         "test_name": f"hunyuan3d_image_to_textured_mesh_{image_files[0].stem}",
@@ -221,11 +310,11 @@ class ComprehensiveModelTester:
                         "endpoint": "/mesh-generation/image-to-textured-mesh",
                         "model_preference": "hunyuan3d_image_to_textured_mesh",
                         "input_data": {
-                            "image_path": str(image_files[0]),
                             "texture_resolution": 1024,
                             "output_format": "glb",
                         },
                         "expected_outputs": ["output_mesh_path"],
+                        "files_to_upload": [("image", str(image_files[0]))],
                     },
                 ]
             )
@@ -242,12 +331,14 @@ class ComprehensiveModelTester:
                         "endpoint": "/mesh-generation/image-mesh-painting",
                         "model_preference": "trellis_image_mesh_painting",
                         "input_data": {
-                            "image_path": str(image_file),
-                            "mesh_path": str(mesh_file),
                             "texture_resolution": 1024,
                             "output_format": "glb",
                         },
                         "expected_outputs": ["output_mesh_path"],
+                        "files_to_upload": [
+                            ("image", str(image_file)),
+                            ("mesh", str(mesh_file)),
+                        ],
                     },
                     {
                         "test_name": f"hunyuan3d_image_mesh_painting_{image_file.stem}_{mesh_file.stem}",
@@ -255,12 +346,14 @@ class ComprehensiveModelTester:
                         "endpoint": "/mesh-generation/image-mesh-painting",
                         "model_preference": "hunyuan3d_image_mesh_painting",
                         "input_data": {
-                            "image_path": str(image_file),
-                            "mesh_path": str(mesh_file),
                             "texture_resolution": 1024,
                             "output_format": "glb",
                         },
                         "expected_outputs": ["output_mesh_path"],
+                        "files_to_upload": [
+                            ("image", str(image_file)),
+                            ("mesh", str(mesh_file)),
+                        ],
                     },
                 ]
             )
@@ -277,10 +370,10 @@ class ComprehensiveModelTester:
                         "endpoint": "/mesh-generation/image-to-raw-mesh",
                         "model_preference": "hunyuan3d_2_0_image_to_raw_mesh",
                         "input_data": {
-                            "image_path": str(image_files[0]),
                             "output_format": "glb",
                         },
                         "expected_outputs": ["output_mesh_path"],
+                        "files_to_upload": [("image", str(image_files[0]))],
                     },
                     {
                         "test_name": f"hunyuan3d_image_to_raw_mesh_{image_files[0].stem}",
@@ -288,10 +381,10 @@ class ComprehensiveModelTester:
                         "endpoint": "/mesh-generation/image-to-raw-mesh",
                         "model_preference": "hunyuan3d_image_to_raw_mesh",
                         "input_data": {
-                            "image_path": str(image_files[0]),
                             "output_format": "glb",
                         },
                         "expected_outputs": ["output_mesh_path"],
+                        "files_to_upload": [("image", str(image_files[0]))],
                     },
                 ]
             )
@@ -306,10 +399,10 @@ class ComprehensiveModelTester:
                     "endpoint": "/mesh-generation/image-to-raw-mesh",
                     "model_preference": "partpacker_part_packing",
                     "input_data": {
-                        "image_path": str(image_file),
                         "output_format": "glb",
                     },
                     "expected_outputs": ["output_mesh_path"],
+                    "files_to_upload": [("image", str(image_file))],
                 }
             )
 
@@ -323,11 +416,11 @@ class ComprehensiveModelTester:
                     "endpoint": "/mesh-segmentation/segment-mesh",
                     "model_preference": "partfield_mesh_segmentation",
                     "input_data": {
-                        "mesh_path": str(mesh_file),
                         "num_parts": 8,
                         "output_format": "glb",
                     },
                     "expected_outputs": ["output_mesh_path"],
+                    "files_to_upload": [("mesh", str(mesh_file))],
                 }
             )
 
@@ -341,10 +434,10 @@ class ComprehensiveModelTester:
                     "endpoint": "/mesh-generation/part-completion",  # Uses part-completion endpoint
                     "model_preference": "holopart_part_completion",
                     "input_data": {
-                        "mesh_path": str(mesh_file),
                         "output_format": "glb",
                     },
                     "expected_outputs": ["output_mesh_path"],
+                    "files_to_upload": [("mesh", str(mesh_file))],
                 }
             )
 
@@ -358,11 +451,11 @@ class ComprehensiveModelTester:
                     "endpoint": "/auto-rig/generate-rig",
                     "model_preference": "unirig_auto_rig",
                     "input_data": {
-                        "mesh_path": str(mesh_file),
                         "rig_mode": "skeleton",
                         "output_format": "fbx",
                     },
                     "expected_outputs": ["output_mesh_path"],
+                    "files_to_upload": [("mesh", str(mesh_file))],
                 }
             )
 
@@ -404,9 +497,17 @@ class ComprehensiveModelTester:
     def submit_job(self, config: Dict[str, Any]) -> Optional[str]:
         """Submit a job to the API"""
         try:
-            endpoint = f"{self.api_base_url}{config['endpoint']}"
-            data = config["input_data"].copy()
-            data["model_preference"] = config["model_preference"]
+            # Prepare config with file uploads
+            prepared_config = self.prepare_test_config(config)
+            if not prepared_config:
+                self.logger.error(
+                    f"Failed to prepare test config for {config['test_name']}"
+                )
+                return None
+
+            endpoint = f"{self.api_base_url}{prepared_config['endpoint']}"
+            data = prepared_config["input_data"].copy()
+            data["model_preference"] = prepared_config["model_preference"]
 
             response = requests.post(endpoint, json=data, timeout=60)
             if response.status_code == 200:

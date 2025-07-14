@@ -17,7 +17,13 @@ from core.scheduler.scheduler_factory import (
 )
 from core.utils.exceptions import BaseAPIException
 
-from .routers import auto_rigging, mesh_generation, mesh_segmentation, system
+from .routers import (
+    auto_rigging,
+    file_upload,
+    mesh_generation,
+    mesh_segmentation,
+    system,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -218,8 +224,9 @@ async def internal_error_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
 
-app.include_router(mesh_generation.router, prefix="/api/v1", tags=["Mesh Generation"])
+app.include_router(file_upload.router, prefix="/api/v1", tags=["File Upload"])
 
+app.include_router(mesh_generation.router, prefix="/api/v1", tags=["Mesh Generation"])
 
 app.include_router(auto_rigging.router, prefix="/api/v1", tags=["Auto Rigging"])
 

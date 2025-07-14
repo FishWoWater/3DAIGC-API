@@ -9,10 +9,11 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.dependencies import get_scheduler
+from api.routers.file_upload import resolve_file_id
 from core.scheduler.job_queue import JobRequest
 from core.scheduler.multiprocess_scheduler import MultiprocessModelScheduler
 
@@ -58,11 +59,32 @@ class MeshSegmentationRequest(BaseModel):
 
     mesh_path: Optional[str] = Field(None, description="Path to mesh file")
     mesh_base64: Optional[str] = Field(None, description="Base64 encoded mesh data")
+    mesh_file_id: Optional[str] = Field(
+        None, description="File ID from upload endpoint"
+    )
     num_parts: int = Field(8, description="Target number of parts", ge=2, le=32)
     output_format: str = Field("glb", description="Output format")
     model_preference: str = Field(
         "partfield_mesh_segmentation", description="Model name for mesh segmentation"
     )
+
+    @field_validator("mesh_file_id")
+    @classmethod
+    def validate_inputs(cls, v, info):
+        mesh_path = info.data.get("mesh_path")
+        mesh_base64 = info.data.get("mesh_base64")
+
+        inputs_provided = sum(bool(x) for x in [mesh_path, mesh_base64, v])
+
+        if inputs_provided == 0:
+            raise ValueError(
+                "One of mesh_path, mesh_base64, or mesh_file_id must be provided"
+            )
+        if inputs_provided > 1:
+            raise ValueError(
+                "Only one of mesh_path, mesh_base64, or mesh_file_id should be provided"
+            )
+        return v
 
     model_config = ConfigDict(protected_namespaces=("settings_",))
 
@@ -97,16 +119,24 @@ async def segment_mesh(
             request.model_preference, "mesh_segmentation", scheduler
         )
 
-        # Validate input - either mesh_path or mesh_base64 must be provided
-        if not request.mesh_path and not request.mesh_base64:
+        # Validate input - either mesh_path, mesh_base64, or mesh_file_id must be provided
+        if not any([request.mesh_path, request.mesh_base64, request.mesh_file_id]):
             raise HTTPException(
                 status_code=400,
-                detail="Either mesh_path or mesh_base64 must be provided",
+                detail="One of mesh_path, mesh_base64, or mesh_file_id must be provided",
             )
 
         # Process mesh input
         mesh_file_path = None
-        if request.mesh_base64:
+
+        if request.mesh_file_id:
+            # Handle file ID
+            mesh_file_path = resolve_file_id(request.mesh_file_id)
+            if not mesh_file_path:
+                raise HTTPException(
+                    status_code=404, detail="Mesh file not found or expired"
+                )
+        elif request.mesh_base64:
             # Handle base64 encoded mesh
             import base64
             import tempfile
@@ -170,48 +200,6 @@ async def segment_mesh(
     except Exception as e:
         logger.error(f"Error scheduling mesh segmentation job: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to schedule job: {str(e)}")
-
-
-@router.post("/upload-mesh")
-async def upload_mesh_for_segmentation(
-    file: UploadFile = File(..., description="Mesh file (GLB format)"),
-):
-    """
-    Upload a mesh file for segmentation.
-
-    Args:
-        file: Uploaded mesh file
-
-    Returns:
-        File path information
-    """
-    try:
-        # Validate file format (GLB only for segmentation)
-        allowed_formats = {".glb"}
-        if file.filename is None:
-            raise HTTPException(status_code=400, detail="File name is required")
-        file_extension = "." + file.filename.split(".")[-1].lower()
-
-        if file_extension not in allowed_formats:
-            raise HTTPException(
-                status_code=400,
-                detail="Unsupported file format. Only GLB files are supported for segmentation.",
-            )
-
-        # In a real implementation, save the file to storage
-        # For now, return a mock path
-        file_path = f"/uploads/meshes/{file.filename}"
-
-        return {
-            "filename": file.filename,
-            "file_path": file_path,
-            "size": file.size,
-            "content_type": file.content_type,
-        }
-
-    except Exception as e:
-        logger.error(f"Error uploading mesh file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
 
 @router.get("/supported-formats")
