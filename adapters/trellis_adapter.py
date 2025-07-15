@@ -17,6 +17,7 @@ from PIL import Image
 from core.models.base import ModelStatus
 from core.models.mesh_models import ImageToMeshModel, TextToMeshModel
 from core.utils.thumbnail_utils import generate_mesh_thumbnail
+from utils.mesh_utils import MeshProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ class TrellisTextToMeshAdapterCommon(TextToMeshModel):
             "slat_decoder_rf"
         ]  # Skip some models conditionally to save VRAM
         self.pipeline = None
+        self.mesh_processor = MeshProcessor()
 
         # Add TRELLIS to Python path if not already there
         if str(self.trellis_root) not in sys.path:
@@ -190,7 +192,7 @@ class TrellisTextToMeshAdapterCommon(TextToMeshModel):
 
             # Save mesh in requested format
             output_path = self._generate_output_path(text_prompt, output_format)
-            mesh.export(output_path)
+            self.mesh_processor.save_mesh(mesh, output_path, do_normalise=True)
 
             # Generate thumbnail
             thumbnail_path = self._generate_thumbnail_path(output_path)
@@ -304,7 +306,7 @@ class TrellisImageToMeshAdapterCommon(ImageToMeshModel):
         # skip some models conditionally to save VRAM (overwrite by subclass adapaters)
         self.skip_models = ["slat_decoder_rf"]
         self.pipeline = None
-
+        self.mesh_processor = MeshProcessor()
         # Add TRELLIS to Python path if not already there
         if str(self.trellis_root) not in sys.path:
             sys.path.insert(0, str(self.trellis_root))
@@ -429,7 +431,7 @@ class TrellisImageToMeshAdapterCommon(ImageToMeshModel):
             output_path = self._generate_output_path(
                 image_path, output_format, is_prompt=False
             )
-            mesh.export(output_path)
+            self.mesh_processor.save_mesh(mesh, output_path, do_normalise=True)
 
             # Generate thumbnail
             thumbnail_path = self._generate_thumbnail_path(output_path)

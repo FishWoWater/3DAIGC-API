@@ -267,7 +267,7 @@ class Hunyuan3DV21ImageToRawMeshAdapter(Hunyuan3DV21ImageToMeshAdapterCommon):
             output_path = self._generate_output_path(base_name, output_format)
 
             # Save raw mesh
-            mesh_result.export(str(output_path))
+            self.mesh_processor.save_mesh(mesh_result, output_path)
 
             # Load final mesh for statistics
             final_mesh = self.mesh_processor.load_mesh(output_path)

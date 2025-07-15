@@ -38,14 +38,32 @@ class MeshProcessor:
             raise
 
     @staticmethod
+    def normalise_mesh(
+        mesh: Union[trimesh.Trimesh, trimesh.Scene],
+    ) -> Union[trimesh.Trimesh, trimesh.Scene]:
+        """Normalise a mesh to fit within a unit sphere."""
+        try:
+            mesh.apply_scale(1.0 / mesh.bounding_box.extents.max())
+            return mesh
+        except Exception as e:
+            logger.error(f"Failed to normalise mesh: {str(e)}")
+            return mesh
+
+    @staticmethod
     def save_mesh(
-        mesh: trimesh.Trimesh, output_path: Union[str, Path], format: str = "glb"
+        mesh: trimesh.Trimesh,
+        output_path: Union[str, Path],
+        format: str = "glb",
+        do_normalise: bool = True,
     ) -> Path:
         """Save a mesh to file."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
+            if do_normalise:
+                mesh = MeshProcessor.normalise_mesh(mesh)
+
             mesh.export(output_path)
             logger.info(f"Saved mesh to {output_path}")
             return output_path
@@ -56,13 +74,19 @@ class MeshProcessor:
 
     @staticmethod
     def save_scene(
-        scene: trimesh.Scene, output_path: Union[str, Path], format: str = "glb"
+        scene: trimesh.Scene,
+        output_path: Union[str, Path],
+        format: str = "glb",
+        do_normalise: bool = True,
     ) -> Path:
         """Save a scene to file."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
+            if do_normalise:
+                scene = MeshProcessor.normalise_mesh(scene)
+
             scene.export(output_path)
             logger.info(
                 f"Saved scene with {len(scene.geometry)} parts to {output_path}"

@@ -72,10 +72,6 @@ class PartFieldSegmentationAdapter(MeshSegmentationModel):
             self.partfield_runner = PartFieldRunner(
                 config_file=self.config_file,
                 continue_ckpt=self.continue_ckpt,
-                use_agglo=True,
-                alg_option=0,
-                with_knn=False,
-                export_mesh=True,
                 partfield_root=str(self.partfield_root),
             )
 
@@ -158,16 +154,11 @@ class PartFieldSegmentationAdapter(MeshSegmentationModel):
             cluster_dir.mkdir(parents=True, exist_ok=True)
 
             # Update runner configuration for this request
-            self.partfield_runner.use_agglo = use_hierarchical
-            self.partfield_runner.alg_option = alg_option
-            self.partfield_runner.export_mesh = export_colored_mesh
 
-            segmentation_result = self.partfield_runner.run_partfield(
-                str(mesh_path),
-                str(feature_dir),
-                str(cluster_dir),
-                export_colored_mesh,
-                num_parts,
+            segmentation_result, num_parts_to_path = (
+                self.partfield_runner.run_partfield(
+                    str(mesh_path), str(feature_dir), str(cluster_dir), num_parts
+                )
             )
 
             if segmentation_result is None:
@@ -183,7 +174,7 @@ class PartFieldSegmentationAdapter(MeshSegmentationModel):
             scene = self._create_segmented_scene(mesh, segmentation_result, num_parts)
 
             # Save segmented mesh
-            self.mesh_processor.save_scene(scene, output_path)
+            self.mesh_processor.save_scene(scene, output_path, do_normalise=True)
 
             # Create segmentation info
             segmentation_info = {
@@ -249,7 +240,9 @@ class PartFieldSegmentationAdapter(MeshSegmentationModel):
             # Handle hierarchical results - use the one with desired number of segments
             if hasattr(segmentation_result, "__len__") and len(segmentation_result) > 0:
                 # Find the segmentation closest to desired number of segments
-                best_idx = min(len(segmentation_result) - 1, num_parts - 1)
+                # best_idx = min(len(segmentation_result) - 1, num_parts - 1)
+                ### TODO: we may return a number of paths to the client, to convineiently swicthes to different parts
+                best_idx = 0
                 labels = segmentation_result[best_idx]
                 if isinstance(labels, np.ndarray):
                     labels = labels.flatten().tolist()

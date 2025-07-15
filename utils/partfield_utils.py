@@ -21,7 +21,7 @@ from lightning.pytorch.strategies import DDPStrategy
 from plyfile import PlyData
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.sparse.csgraph import connected_components
-from sklearn.cluster import AgglomerativeClustering, KMeans
+from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
 
 
@@ -625,19 +625,10 @@ class PartFieldRunner:
         self,
         config_file: str = "thirdparty/PartField/configs/final/demo.yaml",
         continue_ckpt: str = "pretrained/PartField/model_objaverse.pt",
-        use_agglo: bool = True,
-        alg_option: int = 0,
-        with_knn: bool = False,
-        export_mesh: bool = False,
         partfield_root: str = "thirdparty/PartField",
     ):
         self.config_file = config_file
         self.continue_ckpt = continue_ckpt
-
-        self.use_agglo = use_agglo
-        self.alg_option = alg_option
-        self.with_knn = with_knn
-        self.export_mesh = export_mesh
 
         self.partfield_root = partfield_root
         if self.partfield_root not in sys.path:
@@ -690,7 +681,6 @@ class PartFieldRunner:
         mesh_path: str,
         feature_dir: str,
         cluster_dir: str,
-        export_mesh: bool = False,
         num_max_clusters: int = 10,
     ):
         # here mesh_path is expected in the form of "exp_results/pipeline/<task_uid>/raw_geometry.glb"
@@ -705,10 +695,9 @@ class PartFieldRunner:
         cluster_subfolder = os.path.join(cluster_dir, "cluster_out")
         os.makedirs(cluster_subfolder, exist_ok=True)
 
-        if export_mesh:
-            # for mesh exportation
-            ply_subfolder = os.path.join(cluster_dir, "ply")
-            os.makedirs(ply_subfolder, exist_ok=True)
+        # for mesh exportation
+        ply_subfolder = os.path.join(cluster_dir, "ply")
+        os.makedirs(ply_subfolder, exist_ok=True)
 
         # Step1, first make a temp directory to store only the input mesh, and update the trainer
         # TODO: optimize the running speed here by using pure pytorch inference
@@ -736,7 +725,6 @@ class PartFieldRunner:
             feature_dir,
             cluster_dir,
             num_max_clusters=num_max_clusters,
-            export_mesh=export_mesh,
         )
 
     def solve_clustering(
@@ -745,7 +733,6 @@ class PartFieldRunner:
         feature_dir: str,
         cluster_dir: str,
         num_max_clusters: int = 10,
-        export_mesh: bool = False,
     ):
         from partfield.utils import load_mesh_util
 
@@ -770,109 +757,61 @@ class PartFieldRunner:
                 logger.error(
                     f"{feature_dir}/{model_name}/part_feat_{model_name}_{view_id}_batch.npy"
                 )
-                return
+                return None, None
 
         point_feat = point_feat / np.linalg.norm(point_feat, axis=-1, keepdims=True)
 
-        if not self.use_agglo:
-            for num_cluster in range(2, num_max_clusters):
-                clustering = KMeans(n_clusters=num_cluster, random_state=0).fit(
-                    point_feat
-                )
-                labels = clustering.labels_
+        adj_matrix = construct_face_adjacency_matrix_naive(mesh.faces)
 
-                pred_labels = np.zeros((len(labels), 1))
-                for i, label in enumerate(np.unique(labels)):
-                    # print(i, label)
-                    pred_labels[labels == label] = i  # Assign RGB values to each label
+        clustering = AgglomerativeClustering(
+            connectivity=adj_matrix,
+            n_clusters=1,
+        ).fit(point_feat)
+        hierarchical_labels = hierarchical_clustering_labels(
+            clustering.children_, point_feat.shape[0], max_cluster=num_max_clusters
+        )
 
-                fname_clustering = os.path.join(
-                    cluster_dir,
-                    "cluster_out",
-                    str(model_name)
-                    + "_"
-                    + str(view_id)
-                    + "_"
-                    + str(num_cluster).zfill(2),
-                )
-                np.save(fname_clustering, pred_labels)
+        all_FL = []
+        for n_cluster in range(num_max_clusters):
+            logger.debug("Processing cluster: " + str(n_cluster))
+            labels = hierarchical_labels[n_cluster]
+            all_FL.append(labels)
 
-                V = mesh.vertices
-                F = mesh.faces
+        all_FL = np.array(all_FL)
+        unique_labels = np.unique(all_FL)
 
-                if export_mesh:
-                    fname_mesh = os.path.join(
-                        cluster_dir,
-                        "ply",
-                        str(model_name)
-                        + "_"
-                        + str(view_id)
-                        + "_"
-                        + str(num_cluster).zfill(2)
-                        + ".ply",
-                    )
-                    export_colored_mesh_ply(V, F, pred_labels, filename=fname_mesh)
-            return pred_labels
-        else:
-            if self.alg_option == 0:
-                adj_matrix = construct_face_adjacency_matrix_naive(mesh.faces)
-            elif self.alg_option == 1:
-                adj_matrix = construct_face_adjacency_matrix_facemst(
-                    mesh.faces, mesh.vertices, with_knn=self.with_knn
-                )
-            else:
-                adj_matrix = construct_face_adjacency_matrix_ccmst(
-                    mesh.faces, mesh.vertices, with_knn=self.with_knn
-                )
+        num_parts_to_path = {}
+        for n_cluster in range(num_max_clusters):
+            FL = all_FL[n_cluster]
+            relabel = np.zeros((len(FL), 1))
+            for i, label in enumerate(unique_labels):
+                relabel[FL == label] = i  # Assign RGB values to each label
 
-            clustering = AgglomerativeClustering(
-                connectivity=adj_matrix,
-                n_clusters=1,
-            ).fit(point_feat)
-            hierarchical_labels = hierarchical_clustering_labels(
-                clustering.children_, point_feat.shape[0], max_cluster=num_max_clusters
+            V = mesh.vertices
+            F = mesh.faces
+
+            fname_mesh = os.path.join(
+                cluster_dir,
+                "ply",
+                str(model_name)
+                + "_"
+                + str(view_id)
+                + "_"
+                + str(num_max_clusters - n_cluster).zfill(2)
+                + ".ply",
             )
+            export_colored_mesh_ply(V, F, FL, filename=fname_mesh)
+            num_parts_to_path[num_max_clusters - n_cluster] = fname_mesh
 
-            all_FL = []
-            for n_cluster in range(num_max_clusters):
-                logger.debug("Processing cluster: " + str(n_cluster))
-                labels = hierarchical_labels[n_cluster]
-                all_FL.append(labels)
+            fname_clustering = os.path.join(
+                cluster_dir,
+                "cluster_out",
+                str(model_name)
+                + "_"
+                + str(view_id)
+                + "_"
+                + str(num_max_clusters - n_cluster).zfill(2),
+            )
+            np.save(fname_clustering, FL)
 
-            all_FL = np.array(all_FL)
-            unique_labels = np.unique(all_FL)
-
-            for n_cluster in range(num_max_clusters):
-                FL = all_FL[n_cluster]
-                relabel = np.zeros((len(FL), 1))
-                for i, label in enumerate(unique_labels):
-                    relabel[FL == label] = i  # Assign RGB values to each label
-
-                V = mesh.vertices
-                F = mesh.faces
-
-                if export_mesh:
-                    fname_mesh = os.path.join(
-                        cluster_dir,
-                        "ply",
-                        str(model_name)
-                        + "_"
-                        + str(view_id)
-                        + "_"
-                        + str(num_max_clusters - n_cluster).zfill(2)
-                        + ".ply",
-                    )
-                    export_colored_mesh_ply(V, F, FL, filename=fname_mesh)
-
-                fname_clustering = os.path.join(
-                    cluster_dir,
-                    "cluster_out",
-                    str(model_name)
-                    + "_"
-                    + str(view_id)
-                    + "_"
-                    + str(num_max_clusters - n_cluster).zfill(2),
-                )
-                np.save(fname_clustering, FL)
-
-            return hierarchical_labels
+        return hierarchical_labels, num_parts_to_path

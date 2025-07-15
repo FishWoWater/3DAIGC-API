@@ -180,7 +180,9 @@ class HoloPartCompletionAdapter(BaseMeshGenerationModel):
                 completed_scene = self._simplify_scene(completed_scene)
 
             # Save completed mesh scene
-            self.mesh_processor.save_scene(completed_scene, output_path)
+            self.mesh_processor.save_scene(
+                completed_scene, output_path, do_normalise=True
+            )
 
             # Compute statistics
             input_stats = self._compute_scene_stats(input_mesh)

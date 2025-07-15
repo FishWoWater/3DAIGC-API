@@ -177,7 +177,7 @@ class PartPackerImageToRawMeshAdapter(ImageToMeshModel):
             # Save main combined mesh
             combined_mesh = generation_result["combined_mesh"]
             if combined_mesh is not None:
-                combined_mesh.export(str(output_path))
+                self.mesh_processor.save_mesh(combined_mesh, output_path)
             else:
                 raise Exception("No combined mesh generated")
 

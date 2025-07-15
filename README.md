@@ -215,6 +215,7 @@ curl -X GET "http://localhost:7842/api/v1/system/models"
 
 ### Text to 3D Mesh
 ```bash
+# 1. Submit job 
 curl -X POST "http://localhost:7842/api/v1/mesh-generation/text-to-textured-mesh" \
   -H "Content-Type: application/json" \
   -d '{
@@ -222,29 +223,70 @@ curl -X POST "http://localhost:7842/api/v1/mesh-generation/text-to-textured-mesh
     "output_format": "glb",
     "model_preference": "trellis_text_to_textured_mesh"
   }'
+# Response: {"job_id": "job_789012", "status": "queued", "message": "..."}
+# 2. Check job status
+curl "http://localhost:7842/api/v1/system/jobs/job_789012"
 ```
 
 ### Image to 3D Mesh
 ```bash
+# 1. Upload image file
+curl -X POST "http://localhost:7842/api/v1/file-upload/image" \
+  -F "file=@/path/to/your/image.jpg"
+# Response: {"file_id": "abc123def456", "filename": "image.jpg", ...}
+
+# 2. Generate textured mesh using file ID
 curl -X POST "http://localhost:7842/api/v1/mesh-generation/image-to-textured-mesh" \
-  -F "image_file=@assets/example_image/typical_humanoid_mech.png" \
-  -F "output_format=glb"
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_file_id": "abc123def456",
+    "texture_resolution": 1024,
+    "output_format": "glb",
+    "model_preference": "trellis_image_to_textured_mesh"
+  }'
+
 ```
 
 ### Mesh Segmentation
 ```bash
+# 1. Upload mesh file
+curl -X POST "http://localhost:7842/api/v1/file-upload/mesh" \
+  -F "file=@/path/to/mesh.glb"
+# Response: {"file_id": "mesh_abc123", ...}
+# 2. Segment mesh
 curl -X POST "http://localhost:7842/api/v1/mesh-segmentation/segment-mesh" \
-  -F "mesh_file=@assets/example_mesh/typical_creature_dragon.obj" \
-  -F "model_preference=partfield_mesh_segmentation"
+  -H "Content-Type: application/json" \
+  -d '{
+    "mesh_file_id": "mesh_abc123",
+    "num_parts": 8,
+    "output_format": "glb",
+    "model_preference": "partfield_mesh_segmentation"
+  }'
+# 3. Download segmented result
+curl "http://localhost:7842/api/v1/system/jobs/{job_id}/download" \
+  -o "segmented.glb"
 ```
 
 ### Auto-Rigging
 ```bash
+# 1. Upload mesh file
+curl -X POST "http://localhost:7842/api/v1/file-upload/mesh" \
+  -F "file=@/path/to/character.glb"
+# Response: {"file_id": "char_xyz789", ...}
+# 2. Generate rig
 curl -X POST "http://localhost:7842/api/v1/auto-rigging/generate-rig" \
-  -F "rig_mode=full" \
-  -F "mesh_file=@assets/example_autorig/giraffe.glb" \
-  -F "output_format=fbx"
+  -H "Content-Type: application/json" \
+  -d '{
+    "mesh_file_id": "char_xyz789",
+    "rig_mode": "skeleton",
+    "output_format": "fbx",
+    "model_preference": "unirig_auto_rig"
+  }'
+# 3. Download rigged mesh
+curl "http://localhost:7842/api/v1/system/jobs/{job_id}/download" \
+  -o "rigged_character.fbx"
 ```
+For more examples, check out [API doc](./docs/api_documentation.md). Notice that the uploaded file may have a expired time.
 
 ## 🧪 Testing
 
@@ -318,8 +360,8 @@ python tests/test_on_demand_scheduler.py
 
 ### Long-Term 
 - [ ] Windows one-click installer
-- [ ] Job queue and scheduler switches to redis, may add rate limit
-- [ ] Based on this collection of 3D API, replicate/implement a similar 3D studio like Tripo/Hunyuan, where the frontend and the backend can BOTH be deployed easily on personal PCs
+- [x] Job queue and scheduler switches to redis/sql
+- [x] Based on this collection of 3D API, replicate/implement a similar 3D studio like Tripo/Hunyuan, where the frontend and the backend can BOTH be deployed easily on personal PCs
 
 ## 📄 License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

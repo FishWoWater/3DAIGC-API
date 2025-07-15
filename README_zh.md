@@ -232,6 +232,7 @@ curl -X GET "http://localhost:7842/api/v1/system/models"
 
 ### 文生3D
 ```bash
+# 1. 提交任务 
 curl -X POST "http://localhost:7842/api/v1/mesh-generation/text-to-textured-mesh" \
   -H "Content-Type: application/json" \
   -d '{
@@ -239,29 +240,71 @@ curl -X POST "http://localhost:7842/api/v1/mesh-generation/text-to-textured-mesh
     "output_format": "glb",
     "model_preference": "trellis_text_to_textured_mesh"
   }'
+# Response: {"job_id": "job_789012", "status": "queued", "message": "..."}
+# 2. 检查任务状态
+curl "http://localhost:7842/api/v1/system/jobs/job_789012"
 ```
 
 ### 图生3D
 ```bash
+# 1. 上传图片文件
+curl -X POST "http://localhost:7842/api/v1/file-upload/image" \
+  -F "file=@/path/to/your/image.jpg"
+# Response: {"file_id": "abc123def456", "filename": "image.jpg", ...}
+
+# 2. 使用刚刚的图片文件ID提交任务
 curl -X POST "http://localhost:7842/api/v1/mesh-generation/image-to-textured-mesh" \
-  -F "image_file=@assets/example_image/typical_humanoid_mech.png" \
-  -F "output_format=glb"
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_file_id": "abc123def456",
+    "texture_resolution": 1024,
+    "output_format": "glb",
+    "model_preference": "trellis_image_to_textured_mesh"
+  }'
+
 ```
 
 ### Mesh分割
 ```bash
+# 1. 上传mesh文件
+curl -X POST "http://localhost:7842/api/v1/file-upload/mesh" \
+  -F "file=@/path/to/mesh.glb"
+# Response: {"file_id": "mesh_abc123", ...}
+# 2. 提交分割任务
 curl -X POST "http://localhost:7842/api/v1/mesh-segmentation/segment-mesh" \
-  -F "mesh_file=@assets/example_mesh/typical_creature_dragon.obj" \
-  -F "model_preference=partfield_mesh_segmentation"
+  -H "Content-Type: application/json" \
+  -d '{
+    "mesh_file_id": "mesh_abc123",
+    "num_parts": 8,
+    "output_format": "glb",
+    "model_preference": "partfield_mesh_segmentation"
+  }'
+# 3. 下载分割结果
+curl "http://localhost:7842/api/v1/system/jobs/{job_id}/download" \
+  -o "segmented.glb"
 ```
 
-### 自动绑定
+### 自动绑定/蒙皮
 ```bash
+# 1. 上传Mesh文件
+curl -X POST "http://localhost:7842/api/v1/file-upload/mesh" \
+  -F "file=@/path/to/character.glb"
+# Response: {"file_id": "char_xyz789", ...}
+# 2. 提交绑定任务
 curl -X POST "http://localhost:7842/api/v1/auto-rigging/generate-rig" \
-  -F "rig_mode=full" \
-  -F "mesh_file=@assets/example_autorig/giraffe.glb" \
-  -F "output_format=fbx"
+  -H "Content-Type: application/json" \
+  -d '{
+    "mesh_file_id": "char_xyz789",
+    "rig_mode": "skeleton",
+    "output_format": "fbx",
+    "model_preference": "unirig_auto_rig"
+  }'
+# 3. 下载绑定结果
+curl "http://localhost:7842/api/v1/system/jobs/{job_id}/download" \
+  -o "rigged_character.fbx"
 ```
+更多样例可以查看 [API doc](./docs/api_documentation.md)。
+注意上传的图像/mesh文件可能会有过期时间
 
 ## 🧪 测试
 
