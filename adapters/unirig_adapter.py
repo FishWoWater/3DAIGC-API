@@ -16,6 +16,7 @@ import torch
 from core.models.base import ModelStatus
 from core.models.rig_models import AutoRigModel
 from utils.file_utils import OutputPathGenerator
+from utils.format_utils import fbx_to_glb
 from utils.mesh_utils import MeshProcessor
 from utils.unirig_utils import InferenceConfig, UniRigInferenceEngine
 
@@ -119,7 +120,7 @@ class UniRigAdapter(AutoRigModel):
             inputs: Dictionary containing:
                 - mesh_path: Path to input mesh (required)
                 - rig_mode: Rigging mode ("skeleton", "skin", "full") (default: "full")
-                - output_format: Output format ("fbx", "obj", "glb") (default: "fbx")
+                - output_format: Output format ("fbx", "glb") (default: "fbx")
                 - seed: Random seed for generation (default: None)
                 - with_skinning: Whether to apply skinning weights (default: True)
                 - skeleton_config: Path to skeleton task config (default: None)
@@ -206,6 +207,9 @@ class UniRigAdapter(AutoRigModel):
                     os.path.join(str(output_dir), output_filename),
                 )
                 has_skinning = with_skinning
+
+            # convert fbx to glb
+            result_path = fbx_to_glb(result_path)
 
             # Verify output was created
             if not Path(result_path).exists():

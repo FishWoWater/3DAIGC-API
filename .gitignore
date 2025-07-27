@@ -427,4 +427,7 @@ thirdparty_work
 # dummy intermediate meshes produced by hunyuan 
 assets/example_mesh/white_mesh_remesh.obj 
 assets/example_mesh/white_mesh_remesh.obj.mtl 
+
+# experiments
+data/
 uploads/

@@ -10,7 +10,7 @@
 
 一个基于 FastAPI 的 3D 生成AI模型后端服务框架，包含文生3D/图生3D/Mesh分割/Mesh补全/自动绑定等多特性，每个特性包含多个模型支持（例如 TRELLIS/Hunyuan3D-2.1），包含自适应的GPU调度器。
 
-> 努力开发中... 有待全面测试
+> 开发中... 有待全面测试
 
 ## 🏗️ 系统架构
 系统为多个 3D AI 模型提供统一的 API 网关，具有自动资源管理功能：
@@ -373,11 +373,13 @@ python tests/test_on_demand_scheduler.py
 - [ ] 组织（清理）当前 API 服务的输出目录
 - [ ] 支持多视图图像作为网格生成模型的条件
 - [ ] 暴露并支持更多参数（例如Mesh生成中的减面比率）
+- [ ] 在客户端支持方便地调节Mesh分割中的 Part 数量
 
 ### 长期
+- [x] 基于SQL进行持久化
+- [x] 基于本仓库复现类似 Tripo/Hunyuan 的 3D Studio，前后端纯开源+全本地部署
 - [ ] Windows 一键安装程序
-- [ ] 作业队列和调度器切换到 Redis，或许添加速率限制
-- [ ] 基于这个 3D API 集合，复制/实现类似 Tripo/Hunyuan 的 3D 工作室，其中前端和后端都可以轻松部署在个人电脑上
+- [ ] Separate Job management/queries from AI inference processing (lightweight service layers)
 
 ## 📄 许可证
 此项目基于 Apache License 2.0 许可 - 详情请参阅 [LICENSE](LICENSE) 文件。

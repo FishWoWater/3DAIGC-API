@@ -65,6 +65,14 @@ class AutoRigRequest(BaseModel):
         "unirig_auto_rig", description="Name of the auto-rigging model to use"
     )
 
+    @field_validator("output_format")
+    @classmethod
+    def validate_output_format(cls, v):
+        allowed_formats = ["glb"]
+        if v not in allowed_formats:
+            raise ValueError(f"Output format must be one of: {allowed_formats}")
+        return v
+
     @field_validator("mesh_file_id")
     @classmethod
     def validate_inputs(cls, v, info):
@@ -170,4 +178,4 @@ async def get_supported_formats():
     Returns:
         Dictionary of supported formats
     """
-    return {"input_formats": ["obj", "glb", "fbx"], "output_formats": ["fbx", "glb"]}
+    return {"input_formats": ["obj", "glb", "fbx"], "output_formats": ["glb"]}

@@ -210,4 +210,4 @@ async def get_supported_formats():
     Returns:
         Dictionary of supported formats
     """
-    return {"input_formats": ["glb"], "output_formats": ["glb", "json"]}
+    return {"input_formats": ["glb"], "output_formats": ["glb"]}

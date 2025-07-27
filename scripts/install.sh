@@ -275,7 +275,7 @@ python -c "import open3d; import pymeshlab" && echo "Open3D and pymeshlab instal
 
 # install other runtime dependencies
 sudo apt update
-sudo apt install libsm6 -y
+sudo apt install libsm6 libegl1 libegl1-mesa libgl1-mesa-dev -y # for rendering 
 
 
 

@@ -71,7 +71,7 @@ class TextToRawMeshRequest(BaseModel):
     @field_validator("output_format")
     @classmethod
     def validate_output_format(cls, v):
-        allowed_formats = ["glb", "obj", "fbx", "ply"]
+        allowed_formats = ["glb"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
@@ -110,7 +110,7 @@ class TextMeshPaintingRequest(BaseModel):
     @field_validator("output_format")
     @classmethod
     def validate_output_format(cls, v):
-        allowed_formats = ["glb", "obj", "fbx", "ply"]
+        allowed_formats = ["glb"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
@@ -154,7 +154,7 @@ class ImageToRawMeshRequest(BaseModel):
     @field_validator("output_format")
     @classmethod
     def validate_output_format(cls, v):
-        allowed_formats = ["glb", "obj", "fbx", "ply"]
+        allowed_formats = ["glb"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
@@ -208,7 +208,7 @@ class ImageToTexturedMeshRequest(BaseModel):
     @field_validator("output_format")
     @classmethod
     def validate_output_format(cls, v):
-        allowed_formats = ["glb", "obj", "fbx", "ply"]
+        allowed_formats = ["glb"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
@@ -258,7 +258,7 @@ class ImageMeshPaintingRequest(BaseModel):
     @field_validator("output_format")
     @classmethod
     def validate_output_format(cls, v):
-        allowed_formats = ["glb", "obj", "fbx", "ply"]
+        allowed_formats = ["glb"]
         if v not in allowed_formats:
             raise ValueError(f"Output format must be one of: {allowed_formats}")
         return v
@@ -816,7 +816,7 @@ async def get_supported_formats():
             "base64": ["image/png", "image/jpeg", "model/gltf-binary"],
         },
         "output_formats": {
-            "mesh": ["obj", "glb", "ply", "fbx"],
+            "mesh": ["glb"],
             "texture": ["png", "jpg"],
         },
         "upload_limits": {

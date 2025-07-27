@@ -357,11 +357,13 @@ python tests/test_on_demand_scheduler.py
 - [ ] Better orgnaize (cleanup) the output directory of current API service
 - [ ] Support multiview images as the condition in mesh generation models
 - [ ] Expose and support more parameters (e.g. decimation ratio in mesh generation)
+- [ ] On the client side we support easily changing the number of parts in mesh segmentation
 
 ### Long-Term 
-- [ ] Windows one-click installer
-- [x] Job queue and scheduler switches to redis/sql
+- [x] Job queue and scheduler switches to sql
 - [x] Based on this collection of 3D API, replicate/implement a similar 3D studio like Tripo/Hunyuan, where the frontend and the backend can BOTH be deployed easily on personal PCs
+- [ ] Windows one-click installer
+- [ ] Separate Job management/queries from AI inference processing (lightweight service layers)
 
 ## 📄 License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

@@ -18,6 +18,10 @@ fi
 # Set environment variables
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 
+# optionally enable this if thumbnail rendering is INCORRECT
+# Xvfb :2 -screen 0 1024x768x16 & 
+# export DISPLAY=:2
+
 # Default values
 HOST=${P3D_HOST:-"0.0.0.0"}
 PORT=${P3D_PORT:-7842}

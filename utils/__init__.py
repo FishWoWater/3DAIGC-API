@@ -6,6 +6,7 @@ file handling, and common operations.
 """
 
 from .file_utils import OutputPathGenerator
+from .format_utils import fbx_to_glb
 from .holopart_utils import HoloPartRunner
 from .mesh_utils import MeshProcessor
 from .partfield_utils import PartFieldRunner
@@ -17,4 +18,5 @@ __all__ = [
     "PartFieldRunner",
     "HoloPartRunner",
     "PartPackerRunner",
+    "fbx_to_glb",
 ]

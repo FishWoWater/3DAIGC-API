@@ -19,3 +19,6 @@
 [submodule "thirdparty/UniRig"]
 	path = thirdparty/UniRig
 	url = https://github.com/FishWoWater/UniRig
+[submodule "thirdparty/PartCrafter"]
+	path = thirdparty/PartCrafter
+	url = https://github.com/wgsxm/PartCrafter

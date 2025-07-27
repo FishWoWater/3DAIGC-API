@@ -256,9 +256,9 @@ class MeshThumbnailGenerator:
         azimuth_rad = np.radians(azimuth_angle)
 
         # Calculate camera position
-        x = camera_distance * np.cos(elevation_rad) * np.cos(azimuth_rad)
-        y = camera_distance * np.cos(elevation_rad) * np.sin(azimuth_rad)
-        z = camera_distance * np.sin(elevation_rad)
+        x = camera_distance * np.cos(elevation_rad) * np.sin(azimuth_rad)
+        y = camera_distance * np.sin(elevation_rad)
+        z = camera_distance * np.cos(elevation_rad) * np.cos(azimuth_rad)
 
         camera_pos = center + np.array([x, y, z])
 
@@ -270,6 +270,7 @@ class MeshThumbnailGenerator:
         if np.linalg.norm(right) < 1e-6:
             right = np.cross(forward, [0, 1, 0])
         right = right / np.linalg.norm(right)
+        print(forward, right)
 
         up = np.cross(right, forward)
         up = up / np.linalg.norm(up)
@@ -302,8 +303,8 @@ def generate_mesh_thumbnail(
     output_path: str,
     thumbnail_size: Tuple[int, int] = (512, 512),
     camera_distance: Optional[float] = None,
-    elevation_angle: float = 30.0,
-    azimuth_angle: float = 45.0,
+    elevation_angle: float = 0.0,
+    azimuth_angle: float = 0.0,
 ) -> bool:
     """
     Convenience function to generate a mesh thumbnail.
